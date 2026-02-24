@@ -3,7 +3,7 @@ import { AuthProvider } from "../lib/AuthContext";
 import React from "react";
 
 export const metadata = {
-  title: "CalsDeficit",
+  title: "Calolean",
   description: "AI Health Assistant",
 };
 

@@ -38,7 +38,7 @@ export default function LoginPage() {
         {/* Header Section (NEW) */}
         <div className="text-center mb-8">
           {/* CHANGED: Removed the pill icon, Title moves up naturally */}
-          <h1 className="text-3xl font-bold text-white mb-2">CalsDeficit</h1>
+          <h1 className="text-3xl font-bold text-white mb-2">Calolean</h1>
           <p className="text-gray-400 text-sm">
             Track your health, diet and gym all in one
           </p>
@@ -108,4 +108,4 @@ export default function LoginPage() {
       </div>
     </div>
   );
-}
+} 

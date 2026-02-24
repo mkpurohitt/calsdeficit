@@ -136,7 +136,7 @@ export default function Dashboard() {
       <header className="p-4 bg-[#0a1f1c] border-b border-gray-800 flex justify-between items-center shadow-md">
         {/* CHANGED: Removed the 💊 span */}
         <h1 className="text-xl font-bold flex items-center gap-2">
-          CalsDeficit
+          Calolean
         </h1>
 
         {/* --- PASTE THIS NEW BLOCK HERE --- */}
