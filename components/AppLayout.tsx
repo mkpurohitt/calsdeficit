@@ -1,4 +1,5 @@
 "use client";
+import React from "react";
 import { MessageSquare, Utensils, ShoppingBag, Dumbbell, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";

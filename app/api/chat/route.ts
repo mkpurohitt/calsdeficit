@@ -1,19 +1,15 @@
 import { VertexAI } from '@google-cloud/vertexai';
 import { NextResponse } from 'next/server';
 
-// Initialize Vertex AI
-const vertex_ai = new VertexAI({
-  project: 'calsdeficit-485318', 
-  location: 'us-central1',       
-});
-
-// CHANGED: Using the specific STABLE version for 2.0 Flash-Lite
-// "001" is the stable tag that avoids the "Preview" 404 errors
-const model = vertex_ai.getGenerativeModel({ 
-  model: 'gemini-2.5-flash-lite' 
-});
-
 export async function POST(req: Request) {
+  // Initialize Vertex AI inside the handler so it doesn't crash dev server startup
+  const vertex_ai = new VertexAI({
+    project: 'calsdeficit-485318',
+    location: 'us-central1',
+  });
+  const model = vertex_ai.getGenerativeModel({
+    model: 'gemini-2.5-flash-lite'
+  });
   try {
     const { message, fileData, mimeType, mode } = await req.json();
 
