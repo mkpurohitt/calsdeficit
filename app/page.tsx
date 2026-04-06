@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Send, Camera, Video, FileText, Upload, LogOut, PlayCircle, Activity, Stethoscope } from "lucide-react";
 import ReactMarkdown from 'react-markdown'; 
 import { auth } from "../lib/firebase";
-import AppLayout from "../components/AppLayout"; // <-- Imported Layout
+import AppLayout from "../components/AppLayout";
 
 interface Message {
   role: 'user' | 'ai';
@@ -124,49 +124,105 @@ export default function Dashboard() {
     if (e.key === 'Enter') handleSend();
   };
 
-  if (loading) return <div className="h-screen bg-[#05110f] text-white flex items-center justify-center">Loading...</div>;
+  if (loading) return (
+    <div
+      className="h-screen flex items-center justify-center"
+      style={{ background: "var(--bg-app)", color: "var(--text-primary)" }}
+    >
+      <div className="flex items-center gap-3">
+        <div className="w-5 h-5 rounded-full recording" style={{ background: "var(--lime-400)" }} />
+        <span style={{ fontSize: 15, fontWeight: 500, color: "var(--text-secondary)" }}>Loading...</span>
+      </div>
+    </div>
+  );
+
+  const modeChips: { key: 'food' | 'gym' | 'medical'; icon: any; label: string }[] = [
+    { key: 'food', icon: Camera, label: "Scan Food" },
+    { key: 'gym', icon: Video, label: "Gym Form" },
+    { key: 'medical', icon: FileText, label: "Medical" },
+  ];
 
   return (
     <AppLayout>
-      {/* CHANGED: h-screen is now h-full to fit inside the layout properly */}
-      <div className="flex flex-col h-full bg-[#05110f] text-white">
+      <div className="flex flex-col h-full" style={{ minHeight: "calc(100vh - 0px)" }}>
         
-        {/* Header */}
-        <header className="p-4 bg-[#0a1f1c] border-b border-gray-800 flex justify-between items-center shadow-md">
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            Calolean
-          </h1>
-
+        {/* ── Top Bar ── */}
+        <header
+          className="flex items-center justify-between px-6 shrink-0"
+          style={{
+            height: 60,
+            background: "var(--surface-card)",
+            borderBottom: "1px solid var(--border-color)",
+          }}
+        >
           <div className="flex items-center gap-3">
-            <a 
-              href="http://35.239.101.149/health-guidance" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold bg-[#112926] text-[#00ff9d] border border-[#00ff9d] hover:bg-[#00ff9d] hover:text-black transition-all"
+            <h1
+              style={{
+                fontSize: 18,
+                fontWeight: 700,
+                fontFamily: "var(--font-display)",
+                color: "var(--text-primary)",
+              }}
             >
-              <Stethoscope size={16} /> AI Doctor
-            </a>
+              CalAI
+            </h1>
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "var(--radius-full)",
+                background: "var(--lime-400)",
+                display: "inline-block",
+                boxShadow: "var(--shadow-lime-sm)",
+              }}
+            />
+          </div>
 
-            <button onClick={handleLogout} className="p-2 hover:bg-gray-800 rounded-full">
-              <LogOut className="h-5 w-5 text-gray-400" />
+          <div className="flex items-center gap-2">
+            <a
+              href="http://35.239.101.149/health-guidance"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-secondary flex items-center gap-2"
+              style={{ padding: "6px 14px", fontSize: 12, fontWeight: 700, borderRadius: "var(--radius-full)" }}
+            >
+              <Stethoscope size={14} /> AI Doctor
+            </a>
+            <button
+              onClick={handleLogout}
+              className="btn-icon"
+              style={{ width: 36, height: 36 }}
+            >
+              <LogOut size={16} />
             </button>
           </div>
         </header>
 
-        {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* ── Chat Messages ── */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           {messages.map((msg, idx) => (
-            <div key={idx} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[85%] p-4 rounded-2xl ${
-                msg.role === "user" 
-                  ? "bg-[#00ff9d] text-black rounded-br-none" 
-                  : "bg-[#112926] text-white border border-gray-700 rounded-bl-none"
-              }`}>
+            <div
+              key={idx}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} animate-fade-in-up`}
+              style={{ animationDelay: "0s" }}
+            >
+              <div className={msg.role === "user" ? "chat-bubble-user" : "chat-bubble-ai"}>
+                {/* File preview */}
                 {msg.file && (
                   msg.file.startsWith("blob") && msg.file.includes("pdf") ? (
-                     <div className="flex items-center gap-2 mb-2 bg-black/20 p-2 rounded"><FileText /> Document attached</div>
+                    <div
+                      className="flex items-center gap-2 mb-2 p-2 rounded"
+                      style={{ background: "rgba(0,0,0,0.15)", borderRadius: "var(--radius-sm)" }}
+                    >
+                      <FileText size={16} /> Document attached
+                    </div>
                   ) : (
-                     <img src={msg.file} alt="upload" className="mb-2 rounded-lg max-h-40 object-cover" />
+                    <img
+                      src={msg.file}
+                      alt="upload"
+                      className="mb-2"
+                      style={{ borderRadius: "var(--radius-md)", maxHeight: 160, objectFit: "cover" }}
+                    />
                   )
                 )}
                 
@@ -177,24 +233,26 @@ export default function Dashboard() {
                        const cleanJson = msg.text.replace(/```json|```/g, '');
                        const data = JSON.parse(cleanJson);
                        return (
-                         <div className="space-y-2">
-                           <h3 className="text-lg font-bold text-[#00ff9d]">{data.food_name}</h3>
-                           <div className="text-3xl font-bold">{data.calories} <span className="text-sm font-normal text-gray-400">kcal</span></div>
-                           <div className="grid grid-cols-3 gap-2 text-center text-sm my-2">
-                             <div className="bg-black/30 p-2 rounded">
-                               <div className="text-[#00ff9d] font-bold">{data.macros.protein}</div>
-                               <div className="text-gray-500 text-xs">Prot</div>
-                             </div>
-                             <div className="bg-black/30 p-2 rounded">
-                               <div className="text-[#00ff9d] font-bold">{data.macros.carbs}</div>
-                               <div className="text-gray-500 text-xs">Carb</div>
-                             </div>
-                             <div className="bg-black/30 p-2 rounded">
-                               <div className="text-[#00ff9d] font-bold">{data.macros.fats}</div>
-                               <div className="text-gray-500 text-xs">Fat</div>
-                             </div>
+                         <div className="space-y-3">
+                           <h3 style={{ fontSize: 17, fontWeight: 700, color: "var(--lime-400)" }}>{data.food_name}</h3>
+                           <div style={{ fontFamily: "var(--font-mono)", fontSize: 32, fontWeight: 700, color: "var(--text-primary)" }}>
+                             {data.calories} <span style={{ fontSize: 13, fontWeight: 400, color: "var(--text-tertiary)" }}>kcal</span>
                            </div>
-                           <p className="text-sm text-gray-300 italic border-l-2 border-[#00ff9d] pl-2">{data.health_tip}</p>
+                           <div className="grid grid-cols-3 gap-2 text-center">
+                             {[
+                               { label: "Protein", value: data.macros.protein, color: "var(--macro-protein)" },
+                               { label: "Carbs", value: data.macros.carbs, color: "var(--macro-carbs)" },
+                               { label: "Fat", value: data.macros.fats, color: "var(--macro-fat)" },
+                             ].map((m, i) => (
+                               <div key={i} style={{ background: "rgba(0,0,0,0.2)", padding: "8px", borderRadius: "var(--radius-sm)" }}>
+                                 <div style={{ color: m.color, fontWeight: 700, fontSize: 14, fontFamily: "var(--font-mono)" }}>{m.value}</div>
+                                 <div style={{ color: "var(--text-tertiary)", fontSize: 11, marginTop: 2 }}>{m.label}</div>
+                               </div>
+                             ))}
+                           </div>
+                           <p style={{ fontSize: 13, color: "var(--text-secondary)", fontStyle: "italic", borderLeft: "2px solid var(--lime-400)", paddingLeft: 10 }}>
+                             {data.health_tip}
+                           </p>
                          </div>
                        );
                      } catch (e) {
@@ -212,85 +270,150 @@ export default function Dashboard() {
 
                      return (
                        <div className="space-y-3">
-                         <div className="flex items-center gap-2 text-[#00ff9d] font-bold mb-1">
-                           <Activity size={20} /> Form Analysis
+                         <div className="flex items-center gap-2" style={{ color: "var(--lime-400)", fontWeight: 700, fontSize: 14 }}>
+                           <Activity size={18} /> Form Analysis
                          </div>
-                         <p className="whitespace-pre-wrap text-sm leading-relaxed">{advice}</p>
-                         <div className="pt-2">
-                           <a 
-                             href={youtubeUrl} 
-                             target="_blank" 
-                             rel="noopener noreferrer"
-                             className="flex items-center justify-center gap-2 w-full bg-[#ff0000] hover:bg-[#cc0000] text-white py-2 rounded-xl transition-all font-medium"
-                           >
-                             <PlayCircle size={18} /> Watch Correct Form
-                           </a>
-                         </div>
+                         <p className="whitespace-pre-wrap" style={{ fontSize: 14, lineHeight: 1.6, color: "var(--text-primary)" }}>{advice}</p>
+                         <a
+                           href={youtubeUrl}
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           className="flex items-center justify-center gap-2 w-full py-2.5 font-medium"
+                           style={{
+                             background: "#FF0000",
+                             color: "#FFFFFF",
+                             borderRadius: "var(--radius-md)",
+                             fontSize: 14,
+                             transition: "background 0.15s",
+                           }}
+                         >
+                           <PlayCircle size={16} /> Watch Correct Form
+                         </a>
                        </div>
                      );
                   })()
 
                 // 3. NORMAL TEXT
                 ) : (
-                  <div className="text-sm leading-relaxed">
+                  <div style={{ fontSize: 14, lineHeight: 1.6 }}>
                     <ReactMarkdown 
                       components={{
-                        h1: ({node, ...props}) => <h1 className="text-xl font-bold text-[#00ff9d] mb-2" {...props} />,
-                        h2: ({node, ...props}) => <h2 className="text-lg font-bold text-[#00ff9d] mb-2" {...props} />,
-                        strong: ({node, ...props}) => <span className="font-bold text-[#00ff9d]" {...props} />,
-                        ul: ({node, ...props}) => <ul className="list-disc pl-4 space-y-1 mb-2" {...props} />,
-                        li: ({node, ...props}) => <li className="marker:text-[#00ff9d]" {...props} />,
-                        p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                        h1: ({node, ...props}) => <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--lime-400)", marginBottom: 8, fontFamily: "var(--font-display)" }} {...props} />,
+                        h2: ({node, ...props}) => <h2 style={{ fontSize: 17, fontWeight: 700, color: "var(--lime-400)", marginBottom: 8, fontFamily: "var(--font-display)" }} {...props} />,
+                        strong: ({node, ...props}) => <span style={{ fontWeight: 700, color: "var(--lime-400)" }} {...props} />,
+                        ul: ({node, ...props}) => <ul style={{ listStyleType: "disc", paddingLeft: 16, marginBottom: 8 }} {...props} />,
+                        li: ({node, ...props}) => <li style={{ marginBottom: 4 }} {...props} />,
+                        p: ({node, ...props}) => <p style={{ marginBottom: 8 }} {...props} />,
                       }}
                     >
                       {msg.text}
                     </ReactMarkdown>
                   </div>
                 )}
-
               </div>
             </div>
           ))}
+
+          {/* Typing Indicator */}
           {isProcessing && (
-             <div className="flex justify-start">
-               <div className="bg-[#112926] p-4 rounded-2xl rounded-bl-none border border-gray-700">
-                 <span className="animate-pulse text-[#00ff9d]">Thinking...</span>
-               </div>
-             </div>
+            <div className="flex justify-start">
+              <div className="typing-indicator">
+                <div className="typing-dot" />
+                <div className="typing-dot" />
+                <div className="typing-dot" />
+              </div>
+            </div>
           )}
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Area */}
-        <div className="p-4 bg-[#0a1f1c] border-t border-gray-800">
-          <div className="flex gap-2 mb-3 overflow-x-auto pb-2">
-            <button onClick={() => handleModeSwitch('food')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${mode === 'food' ? 'bg-[#00ff9d] text-black' : 'bg-[#112926] text-gray-300 border border-gray-700'}`}><Camera size={16} /> Food Photo</button>
-            <button onClick={() => handleModeSwitch('gym')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${mode === 'gym' ? 'bg-[#00ff9d] text-black' : 'bg-[#112926] text-gray-300 border border-gray-700'}`}><Video size={16} /> Gym Video</button>
-            <button onClick={() => handleModeSwitch('medical')} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${mode === 'medical' ? 'bg-[#00ff9d] text-black' : 'bg-[#112926] text-gray-300 border border-gray-700'}`}><FileText size={16} /> Medical Report</button>
+        {/* ── Input Area ── */}
+        <div
+          className="shrink-0 px-6 py-4"
+          style={{
+            background: "var(--surface-card)",
+            borderTop: "1px solid var(--border-color)",
+          }}
+        >
+          {/* Mode Chips */}
+          <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
+            {modeChips.map((chip) => (
+              <button
+                key={chip.key}
+                onClick={() => handleModeSwitch(chip.key)}
+                className="flex items-center gap-2 shrink-0"
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "var(--radius-full)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  background: mode === chip.key ? "var(--lime-400)" : "var(--surface-elevated)",
+                  color: mode === chip.key ? "#0A0C0F" : "var(--text-secondary)",
+                  border: mode === chip.key ? "none" : "1px solid var(--border-color)",
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <chip.icon size={14} /> {chip.label}
+              </button>
+            ))}
           </div>
 
-          <div className="relative flex items-center gap-2">
-            <label className="cursor-pointer p-3 hover:bg-gray-800 rounded-full text-gray-400 transition-colors">
-              {mode === 'food' ? <Camera size={20} /> : mode === 'gym' ? <Video size={20} /> : <FileText size={20} />}
-              
-              <input 
-                type="file" 
-                className="hidden" 
-                accept={getFileTypes()} 
-                onChange={handleFileChange} 
+          {/* Input Row */}
+          <div className="flex items-center gap-2">
+            <label
+              className="btn-icon shrink-0"
+              style={{ width: 44, height: 44, cursor: "pointer" }}
+            >
+              {mode === 'food' ? <Camera size={18} /> : mode === 'gym' ? <Video size={18} /> : <FileText size={18} />}
+              <input
+                type="file"
+                className="hidden"
+                accept={getFileTypes()}
+                onChange={handleFileChange}
               />
             </label>
-            
-            <input 
-              type="text" 
-              value={input} 
-              onChange={(e) => setInput(e.target.value)} 
-              onKeyDown={handleKeyDown} 
-              placeholder={file ? `Attached: ${file.name}` : mode === 'chat' ? "Ask health queries..." : `Ask about your ${mode}...`} 
-              className="flex-1 bg-[#05110f] border border-gray-700 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-[#00ff9d]" 
+
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={file ? `Attached: ${file.name}` : mode === 'chat' ? "Ask health queries..." : `Ask about your ${mode}...`}
+              className="cl-input flex-1"
+              style={{ borderRadius: "var(--radius-md)" }}
             />
-            <button onClick={handleSend} disabled={!input && !file} className="p-3 bg-[#00ff9d] hover:bg-[#00cc7d] text-black rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-colors"><Send size={20} /></button>
+
+            <button
+              onClick={handleSend}
+              disabled={!input && !file}
+              className="btn-primary shrink-0 flex items-center justify-center"
+              style={{
+                width: 44,
+                height: 44,
+                padding: 0,
+                borderRadius: "var(--radius-md)",
+                opacity: !input && !file ? 0.4 : 1,
+                cursor: !input && !file ? "not-allowed" : "pointer",
+              }}
+            >
+              <Send size={18} />
+            </button>
           </div>
+
+          {/* File indicator */}
+          {file && (
+            <div className="flex items-center gap-2 mt-2" style={{ fontSize: 12, color: "var(--lime-400)" }}>
+              <Upload size={12} />
+              <span className="truncate">{file.name}</span>
+              <button
+                onClick={() => setFile(null)}
+                style={{ color: "var(--text-tertiary)", background: "none", border: "none", cursor: "pointer", fontSize: 12 }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </AppLayout>

@@ -1,59 +1,200 @@
 "use client";
 import React from "react";
-import { MessageSquare, Utensils, ShoppingBag, Dumbbell, User } from "lucide-react";
+import { MessageSquare, Utensils, ShoppingBag, Dumbbell, User, Settings, Sun, Moon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTheme } from "next-themes";
+import { useAuth } from "../lib/AuthContext";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { theme, setTheme } = useTheme();
+  const { user } = useAuth() as { user: any };
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => setMounted(true), []);
 
   const navItems = [
-    { name: "Chat AI", href: "/", icon: MessageSquare },
+    { name: "Home", href: "/", icon: MessageSquare },
     { name: "Diet", href: "/diet", icon: Utensils },
-    { name: "Shop", href: "/shop", icon: ShoppingBag },
     { name: "Exercise", href: "/exercise", icon: Dumbbell },
+    { name: "Shop", href: "/shop", icon: ShoppingBag },
     { name: "Profile", href: "/profile", icon: User },
   ];
 
+  const userInitial = user?.displayName?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || "U";
+  const userName = user?.displayName || user?.email?.split("@")[0] || "User";
+
   return (
-    <div className="flex h-screen bg-[#05110f] text-white overflow-hidden">
+    <div className="flex h-screen overflow-hidden" style={{ background: "var(--bg-app)", color: "var(--text-primary)" }}>
       
-      {/* Sidebar for Desktop */}
-      <nav className="w-64 bg-[#0a1f1c] border-r border-gray-800 hidden md:flex flex-col">
-        <div className="p-6">
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">Calolean</h1>
+      {/* ── Desktop Sidebar ── */}
+      <nav
+        className="hidden md:flex flex-col fixed left-0 top-0 h-full z-40"
+        style={{
+          width: 240,
+          background: "var(--bg-sidebar)",
+          borderRight: "1px solid var(--border-color)",
+        }}
+      >
+        {/* Logo Area */}
+        <div className="flex items-center px-6" style={{ height: 64 }}>
+          <span className="brand-wordmark" style={{ fontSize: 22 }}>
+            <span style={{ color: "var(--text-primary)" }}>calo</span>
+            <span style={{ color: "var(--lime-400)" }}>lean</span>
+          </span>
         </div>
-        
-        <div className="flex-1 px-4 space-y-2 mt-4">
+
+        {/* Nav Items */}
+        <div className="flex-1 px-3 mt-2 space-y-1">
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             return (
-              <Link key={item.name} href={item.href}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                  isActive ? "bg-[#00ff9d] text-black font-bold" : "text-gray-400 hover:bg-[#112926] hover:text-[#00ff9d]"
-                }`}
+              <Link
+                key={item.name}
+                href={item.href}
+                className="flex items-center gap-3 relative"
+                style={{
+                  height: 48,
+                  padding: "0 16px",
+                  borderRadius: isActive ? "0 var(--radius-md) var(--radius-md) 0" : "var(--radius-md)",
+                  background: isActive ? "rgba(170, 255, 0, 0.08)" : "transparent",
+                  color: isActive ? "var(--lime-400)" : "var(--text-secondary)",
+                  fontWeight: isActive ? 600 : 500,
+                  fontSize: 15,
+                  borderLeft: isActive ? "3px solid var(--lime-400)" : "3px solid transparent",
+                  transition: "all 0.15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = "var(--surface-elevated)";
+                    e.currentTarget.style.color = "var(--text-primary)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = "transparent";
+                    e.currentTarget.style.color = "var(--text-secondary)";
+                  }
+                }}
               >
                 <item.icon size={20} />
-                {item.name}
+                <span>{item.name}</span>
               </Link>
             );
           })}
         </div>
+
+        {/* Bottom Section — User + Settings */}
+        <div
+          className="flex items-center gap-3 px-4"
+          style={{
+            height: 64,
+            borderTop: "1px solid var(--border-color)",
+          }}
+        >
+          <div
+            className="flex items-center justify-center shrink-0"
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: "var(--radius-full)",
+              background: "var(--lime-400)",
+              color: "#0A0C0F",
+              fontWeight: 700,
+              fontSize: 14,
+              fontFamily: "var(--font-sans)",
+            }}
+          >
+            {userInitial}
+          </div>
+          <span
+            className="flex-1 truncate"
+            style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}
+          >
+            {userName}
+          </span>
+          
+          {/* Theme Toggle */}
+          {mounted && (
+            <button
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              className="btn-icon"
+              style={{ width: 32, height: 32, border: "none", background: "transparent" }}
+              aria-label="Toggle theme"
+            >
+              {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+          )}
+        </div>
       </nav>
 
-      {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto relative pb-20 md:pb-0">
+      {/* ── Main Content ── */}
+      <main
+        className="flex-1 overflow-y-auto relative"
+        style={{ marginLeft: 240, paddingBottom: 0 }}
+      >
+        {/* Mobile top bar with theme toggle */}
+        <div
+          className="md:hidden flex items-center justify-between px-4 sticky top-0 z-30"
+          style={{
+            height: 56,
+            background: "var(--bg-sidebar)",
+            borderBottom: "1px solid var(--border-color)",
+          }}
+        >
+          <span className="brand-wordmark" style={{ fontSize: 20 }}>
+            <span style={{ color: "var(--text-primary)" }}>calo</span>
+            <span style={{ color: "var(--lime-400)" }}>lean</span>
+          </span>
+          {mounted && (
+            <button
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              className="btn-icon"
+              style={{ width: 36, height: 36 }}
+              aria-label="Toggle theme"
+            >
+              {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+          )}
+        </div>
+
+        {/* Hide margin on mobile */}
+        <style>{`
+          @media (max-width: 767px) {
+            main { margin-left: 0 !important; padding-bottom: 80px !important; }
+          }
+        `}</style>
+        
         {children}
       </main>
 
-      {/* Mobile Bottom Nav */}
-      <nav className="md:hidden fixed bottom-0 w-full bg-[#0a1f1c] border-t border-gray-800 flex justify-around p-3 z-50 safe-area-pb">
+      {/* ── Mobile Bottom Nav ── */}
+      <nav
+        className="md:hidden fixed bottom-0 w-full flex justify-around items-center z-50"
+        style={{
+          height: 68,
+          background: "var(--bg-sidebar)",
+          borderTop: "1px solid var(--border-color)",
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        }}
+      >
         {navItems.map((item) => {
           const isActive = pathname === item.href;
           return (
-            <Link key={item.name} href={item.href} className={`flex flex-col items-center p-2 rounded-xl transition-all ${isActive ? "text-[#00ff9d]" : "text-gray-500 hover:text-gray-300"}`}>
-              <item.icon size={24} className={isActive ? "fill-[#00ff9d]/20" : ""} />
-              <span className="text-[10px] mt-1 font-medium">{item.name}</span>
+            <Link
+              key={item.name}
+              href={item.href}
+              className="flex flex-col items-center gap-1 py-2 px-3"
+              style={{
+                color: isActive ? "var(--lime-400)" : "var(--text-tertiary)",
+                fontSize: 10,
+                fontWeight: isActive ? 600 : 500,
+                transition: "color 0.15s ease",
+              }}
+            >
+              <item.icon size={22} />
+              <span>{item.name}</span>
             </Link>
           );
         })}
