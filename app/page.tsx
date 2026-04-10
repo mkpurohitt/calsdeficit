@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, ChangeEvent, KeyboardEvent } from "react";
 import { useAuth } from "../lib/AuthContext";
 import { useRouter } from "next/navigation";
-import { Send, Camera, Video, FileText, Upload, LogOut, PlayCircle, Activity, Stethoscope } from "lucide-react";
+import { Send, Camera, Video, Upload, LogOut, PlayCircle, Activity } from "lucide-react";
 import ReactMarkdown from 'react-markdown'; 
 import { auth } from "../lib/firebase";
 import AppLayout from "../components/AppLayout";
@@ -18,10 +18,10 @@ export default function Dashboard() {
   const router = useRouter();
   
   const [messages, setMessages] = useState<Message[]>([
-    { role: "ai", text: "Hello! I am your personal health assistant. Ask me anything or select a mode to start." }
+    { role: "ai", text: "Hey! Upload a food photo to scan nutrients, or a workout video for form analysis. 📷🏋️" }
   ]);
   const [input, setInput] = useState<string>("");
-  const [mode, setMode] = useState<'chat' | 'food' | 'gym' | 'medical'>("chat");
+  const [mode, setMode] = useState<'chat' | 'food' | 'gym'>("chat");
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   
@@ -38,11 +38,10 @@ export default function Dashboard() {
   const getFileTypes = () => {
     if (mode === 'food') return "image/*";
     if (mode === 'gym') return "video/*";
-    if (mode === 'medical') return ".pdf,.doc,.docx,.txt,application/pdf"; 
     return "image/*";
   };
 
-  const handleModeSwitch = (newMode: 'food' | 'gym' | 'medical') => {
+  const handleModeSwitch = (newMode: 'food' | 'gym') => {
     setMode(newMode);
     setFile(null); 
   };
@@ -136,10 +135,9 @@ export default function Dashboard() {
     </div>
   );
 
-  const modeChips: { key: 'food' | 'gym' | 'medical'; icon: any; label: string }[] = [
+  const modeChips: { key: 'food' | 'gym'; icon: any; label: string }[] = [
     { key: 'food', icon: Camera, label: "Scan Food" },
     { key: 'gym', icon: Video, label: "Gym Form" },
-    { key: 'medical', icon: FileText, label: "Medical" },
   ];
 
   return (
@@ -179,15 +177,6 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-2">
-            <a
-              href="http://35.239.101.149/health-guidance"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-secondary flex items-center gap-2"
-              style={{ padding: "6px 14px", fontSize: 12, fontWeight: 700, borderRadius: "var(--radius-full)" }}
-            >
-              <Stethoscope size={14} /> AI Doctor
-            </a>
             <button
               onClick={handleLogout}
               className="btn-icon"
@@ -209,21 +198,12 @@ export default function Dashboard() {
               <div className={msg.role === "user" ? "chat-bubble-user" : "chat-bubble-ai"}>
                 {/* File preview */}
                 {msg.file && (
-                  msg.file.startsWith("blob") && msg.file.includes("pdf") ? (
-                    <div
-                      className="flex items-center gap-2 mb-2 p-2 rounded"
-                      style={{ background: "rgba(0,0,0,0.15)", borderRadius: "var(--radius-sm)" }}
-                    >
-                      <FileText size={16} /> Document attached
-                    </div>
-                  ) : (
                     <img
                       src={msg.file}
                       alt="upload"
                       className="mb-2"
                       style={{ borderRadius: "var(--radius-md)", maxHeight: 160, objectFit: "cover" }}
                     />
-                  )
                 )}
                 
                 {/* 1. FOOD MODE CARD */}
@@ -365,7 +345,7 @@ export default function Dashboard() {
               className="btn-icon shrink-0"
               style={{ width: 44, height: 44, cursor: "pointer" }}
             >
-              {mode === 'food' ? <Camera size={18} /> : mode === 'gym' ? <Video size={18} /> : <FileText size={18} />}
+              {mode === 'food' ? <Camera size={18} /> : mode === 'gym' ? <Video size={18} /> : <Camera size={18} />}
               <input
                 type="file"
                 className="hidden"

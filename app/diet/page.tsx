@@ -17,6 +17,7 @@ interface FoodLogEntry {
   fiber_g: number;
   meal_type: string;
   health_tip?: string;
+  source?: string;
   created_at?: string;
 }
 
@@ -911,6 +912,37 @@ export default function DietPage() {
                     marginBottom: 16,
                   }}>
                     💡 {scanResult.health_tip}
+                  </div>
+                )}
+
+                {/* Source Badge */}
+                {scanResult.source && (
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginBottom: 16,
+                    padding: "6px 12px",
+                    borderRadius: "var(--radius-full)",
+                    background: scanResult.source === 'Gemini Estimation' 
+                      ? "rgba(255, 193, 7, 0.1)" 
+                      : "rgba(77, 199, 77, 0.1)",
+                    width: "fit-content",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: scanResult.source === 'Gemini Estimation'
+                      ? "#FFC107"
+                      : "#4dc74d",
+                  }}>
+                    <span style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      background: scanResult.source === 'Gemini Estimation'
+                        ? "#FFC107"
+                        : "#4dc74d",
+                    }} />
+                    {scanResult.source === 'Gemini Estimation' ? '⚠️ AI Estimate' : `✓ ${scanResult.source}`}
                   </div>
                 )}
 

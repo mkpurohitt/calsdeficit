@@ -3,21 +3,20 @@ import { NextResponse } from 'next/server';
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
 
+// Gemini 2.5 Flash-Lite — ultra-low cost for chat responses
+const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+
 export async function POST(req: Request) {
   try {
     const { message, fileData, mimeType, mode } = await req.json();
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' });
-
     let systemInstruction = "";
     if (mode === 'food') {
-      systemInstruction = `You are a Nutritionist. Analyze the food image. Output a JSON object: { "food_name": "...", "calories": 000, "macros": { "protein": "0g", "carbs": "0g", "fats": "0g" }, "health_tip": "..." }`;
+      systemInstruction = `You are a Nutritionist AI. The user has uploaded a food photo and may provide additional details about it. Analyze the food image carefully. Output a JSON object: { "food_name": "...", "calories": 000, "macros": { "protein": "0g", "carbs": "0g", "fats": "0g" }, "health_tip": "..." }. If the user provides extra context (e.g. portion size, ingredients), use it to refine your analysis.`;
     } else if (mode === 'gym') {
-      systemInstruction = `You are a Gym Coach. Identify the exercise, rate form (1-10), and give corrections. Output Markdown. End with: SEARCH_QUERY: [Exercise Name] correct form`;
-    } else if (mode === 'medical') {
-      systemInstruction = `You are a Medical Assistant. Summarize the report and suggest 3 diet changes. Disclaimer: Not a doctor.`;
+      systemInstruction = `You are a Gym Coach AI. The user has uploaded a workout/exercise video and may provide additional details about their exercise. Identify the exercise, rate their form (1-10), and give specific corrections. Output Markdown. End with: SEARCH_QUERY: [Exercise Name] correct form. If the user provides extra context (e.g. how long they've been training, any injuries), factor it into your advice.`;
     } else {
-      systemInstruction = `You are a health assistant.`;
+      systemInstruction = `You are a friendly health and fitness assistant. Help users with diet questions, workout advice, and general wellness tips. Be concise and practical.`;
     }
 
     const parts: any[] = [{ text: systemInstruction }];
