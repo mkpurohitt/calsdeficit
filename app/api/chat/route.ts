@@ -1,17 +1,13 @@
-import { VertexAI } from '@google-cloud/vertexai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { NextResponse } from 'next/server';
 
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
+
 export async function POST(req: Request) {
-  // Initialize Vertex AI inside the handler so it doesn't crash dev server startup
-  const vertex_ai = new VertexAI({
-    project: 'calsdeficit-485318',
-    location: 'us-central1',
-  });
-  const model = vertex_ai.getGenerativeModel({
-    model: 'gemini-2.5-flash-lite'
-  });
   try {
     const { message, fileData, mimeType, mode } = await req.json();
+
+    const model = genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' });
 
     let systemInstruction = "";
     if (mode === 'food') {
@@ -40,12 +36,12 @@ export async function POST(req: Request) {
       contents: [{ role: 'user', parts }]
     });
 
-    const responseText = result.response.candidates?.[0].content.parts[0].text;
+    const responseText = result.response.text();
     
     return NextResponse.json({ success: true, data: responseText });
 
   } catch (error: any) {
-    console.error("Vertex AI Error:", error);
+    console.error("Gemini AI Error:", error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
