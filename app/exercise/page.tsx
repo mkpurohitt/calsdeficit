@@ -1,12 +1,56 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import AppLayout from "../../components/AppLayout";
-import { PlayCircle, Footprints, Flame, Timer, Video, Camera, Plus, ChevronRight, CheckCircle, Clock, Upload } from "lucide-react";
+import { PlayCircle, Footprints, Flame, Timer, Video, Camera, Plus, ChevronRight, CheckCircle, Clock, Upload, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "../../lib/AuthContext";
 
 export default function ExercisePage() {
   const router = useRouter();
   
+  const { user } = useAuth() as { user: any };
+
+  // Form check state
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0]);
+      setResult(null);
+      setError(null);
+    }
+  };
+
+  const handleAnalyze = async () => {
+    if (!file) return;
+    setIsAnalyzing(true);
+    setError(null);
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("user_id", user?.uid || "guest");
+
+    try {
+      const res = await fetch("http://localhost:8000/analyze-form", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error("Analysis failed. Make sure the Python server is running!");
+      
+      const data = await res.json();
+      setResult(data);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const steps = 6430;
   const stepGoal = 8000;
   const stepPercent = Math.min(steps / stepGoal, 1);
@@ -129,33 +173,85 @@ export default function ExercisePage() {
             </div>
 
             {/* Form Check Card */}
-            <div className="cl-card-accent" style={{ borderRadius: 20, padding: 24 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>Check Your Form</h3>
-              <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 16 }}>
-                Upload a video for AI form analysis
-              </p>
-              <div
-                className="flex flex-col items-center justify-center gap-2"
-                style={{
-                  height: 140,
-                  borderRadius: "var(--radius-lg)",
-                  border: "2px dashed var(--border-color)",
-                  background: "var(--surface-card)",
-                  cursor: "pointer",
-                }}
-                onClick={() => router.push('/?mode=gym')}
-              >
-                <Camera size={28} style={{ color: "var(--lime-400)" }} />
-                <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>Drop video or click to upload</span>
-                <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>MP4, MOV up to 50MB</span>
+            <div className="cl-card-accent flex flex-col" style={{ borderRadius: 20, padding: 24 }}>
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 2 }}>Check Your Form</h3>
+                  <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>Upload a video for AI analysis</p>
+                </div>
+                {result && (
+                  <div style={{ 
+                    padding: "4px 10px", borderRadius: "100px", fontSize: 13, fontWeight: 700,
+                    background: result.score >= 80 ? "rgba(34, 197, 94, 0.15)" : result.score >= 60 ? "rgba(234, 179, 8, 0.15)" : "rgba(239, 68, 68, 0.15)",
+                    color: result.score >= 80 ? "#22c55e" : result.score >= 60 ? "#eab308" : "#ef4444" 
+                  }}>
+                    {result.score}/100
+                  </div>
+                )}
               </div>
-              <button
-                onClick={() => router.push('/?mode=gym')}
-                className="btn-primary w-full mt-4"
-                style={{ height: 44, fontSize: 14 }}
-              >
-                Analyse Form
-              </button>
+              
+              {!result && !isAnalyzing && (
+                <>
+                  <input type="file" accept="video/*" className="hidden" ref={fileInputRef} onChange={handleFileSelect} />
+                  <div
+                    className="flex flex-col items-center justify-center gap-2"
+                    style={{
+                      height: 140, borderRadius: "var(--radius-lg)", border: "2px dashed var(--border-color)",
+                      background: "var(--surface-card)", cursor: "pointer", transition: "all 0.2s"
+                    }}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Camera size={28} style={{ color: "var(--lime-400)" }} />
+                    <span style={{ fontSize: 13, color: "var(--text-secondary)", textAlign: "center", padding: "0 10px" }}>
+                      {file ? file.name : "Drop video or click to upload"}
+                    </span>
+                    <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>MP4, MOV up to 50MB</span>
+                  </div>
+                  <button
+                    onClick={handleAnalyze} disabled={!file} className="btn-primary w-full mt-4"
+                    style={{ height: 44, fontSize: 14, opacity: !file ? 0.5 : 1 }}
+                  >
+                    Analyse Form
+                  </button>
+                  {error && <p style={{ color: "var(--error, #ef4444)", fontSize: 12, marginTop: 10, textAlign: "center" }}>{error}</p>}
+                </>
+              )}
+
+              {isAnalyzing && (
+                <div className="flex flex-col items-center justify-center gap-4 py-8" style={{ border: "2px dashed var(--border-color)", borderRadius: "var(--radius-lg)", background: "var(--surface-card)" }}>
+                  <Loader2 size={32} className="animate-spin" style={{ color: "var(--lime-400)" }} />
+                  <p style={{ fontSize: 13, color: "var(--text-secondary)", textAlign: "center", lineHeight: 1.5 }}>
+                    Analyzing biomechanics...<br/>this takes about 10-15 seconds.
+                  </p>
+                </div>
+              )}
+
+              {result && !isAnalyzing && (
+                <div style={{ background: "var(--surface-elevated)", padding: 16, borderRadius: "var(--radius-md)", border: "1px solid var(--border-color)" }}>
+                  <div className="flex items-center gap-2 mb-3">
+                     <span style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)" }}>{result.exercise_name || "Squat"} Analysis</span>
+                  </div>
+                  <div className="mb-4">
+                    <div className="flex items-start gap-2">
+                       <CheckCircle size={16} color="#22c55e" className="mt-0.5 shrink-0" />
+                       <p style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.5 }}>{result.feedback?.positive}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-start gap-2">
+                       <Flame size={16} color="#eab308" className="mt-0.5 shrink-0" />
+                       <p style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.5 }}>{result.feedback?.improvement}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setResult(null); setFile(null); }}
+                    className="w-full mt-5"
+                    style={{ fontSize: 13, color: "var(--lime-400)", background: "transparent", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: "8px 0", cursor: "pointer", fontWeight: 600 }}
+                  >
+                    Upload Another Video
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
