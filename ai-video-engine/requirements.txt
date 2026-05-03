@@ -3,6 +3,6 @@ uvicorn
 python-multipart
 opencv-python-headless
 mediapipe
-google-generativeai
-supabase
+google-genai
+supabase<2.26.0
 python-dotenv

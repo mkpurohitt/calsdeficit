@@ -1,7 +1,7 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import AppLayout from "../../components/AppLayout";
-import { PlayCircle, Footprints, Flame, Timer, Video, Camera, Plus, ChevronRight, CheckCircle, Clock, Upload, Loader2 } from "lucide-react";
+import { PlayCircle, Footprints, Flame, Timer, Video, Camera, Plus, ChevronRight, CheckCircle, Clock, Upload, Loader2, Search, Dumbbell } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../lib/AuthContext";
 
@@ -80,6 +80,66 @@ export default function ExercisePage() {
 
   const muscleFilters = ["All", "Chest", "Back", "Legs", "Arms", "Shoulders", "Core"];
   const [activeFilter, setActiveFilter] = useState("All");
+
+  // ── Muscle Library Search & Logging State ──
+  const [searchQuery, setSearchQuery] = useState("");
+  const [exercises, setExercises] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [logForm, setLogForm] = useState({ sets: 3, reps: 10, weight_lbs: 0 });
+  const [logSuccess, setLogSuccess] = useState<string | null>(null);
+  const [isLogging, setIsLogging] = useState(false);
+  const [imgErrors, setImgErrors] = useState<Record<string, boolean>>({});
+
+  const fetchExercises = useCallback(async (query: string) => {
+    setIsSearching(true);
+    try {
+      const url = query ? `/api/exercises?query=${encodeURIComponent(query)}` : `/api/exercises`;
+      const res = await fetch(url);
+      const json = await res.json();
+      if (json.success) setExercises(json.data || []);
+    } catch { /* ignore */ }
+    setIsSearching(false);
+  }, []);
+
+  // Load defaults on mount
+  useEffect(() => { fetchExercises(""); }, [fetchExercises]);
+
+  // Debounced search
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => fetchExercises(val), 300);
+  };
+
+  const filteredExercises = activeFilter === "All"
+    ? exercises
+    : exercises.filter(ex =>
+        ex.muscle_group?.toLowerCase().includes(activeFilter.toLowerCase())
+      );
+
+  const handleLogSet = async (exerciseId: string, exerciseName: string) => {
+    setIsLogging(true);
+    try {
+      const res = await fetch('/api/workouts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user?.uid || 'guest',
+          exercise_id: exerciseId,
+          ...logForm,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setLogSuccess(exerciseName);
+        setTimeout(() => setLogSuccess(null), 2500);
+        setExpandedId(null);
+      }
+    } catch { /* ignore */ }
+    setIsLogging(false);
+  };
 
   return (
     <AppLayout>
@@ -413,18 +473,43 @@ export default function ExercisePage() {
             </div>
           </div>
 
-          {/* ── Right Column: Muscle Library ── */}
+          {/* ── Right Column: Muscle Library (Live Search) ── */}
           <div className="space-y-4">
+            {/* Success Toast */}
+            {logSuccess && (
+              <div className="animate-fade-in-up" style={{
+                padding: "10px 16px", borderRadius: "var(--radius-md)",
+                background: "rgba(170, 255, 0, 0.12)", border: "1px solid rgba(170, 255, 0, 0.3)",
+                display: "flex", alignItems: "center", gap: 8,
+              }}>
+                <CheckCircle size={16} style={{ color: "var(--lime-400)" }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--lime-400)" }}>
+                  Logged {logSuccess}!
+                </span>
+              </div>
+            )}
+
             <div className="cl-card" style={{ borderRadius: 20, padding: 24 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 12 }}>Muscle Library</h3>
-              
-              {/* Search */}
-              <input
-                type="text"
-                placeholder="Search exercises..."
-                className="cl-input mb-3"
-                style={{ fontSize: 13 }}
-              />
+              <div className="flex items-center justify-between mb-3">
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>Muscle Library</h3>
+                <Dumbbell size={18} style={{ color: "var(--lime-400)" }} />
+              </div>
+
+              {/* Search Input */}
+              <div style={{ position: "relative", marginBottom: 12 }}>
+                <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-tertiary)" }} />
+                <input
+                  type="text"
+                  placeholder="Search 1,300+ exercises..."
+                  value={searchQuery}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="cl-input"
+                  style={{ fontSize: 13, paddingLeft: 36 }}
+                />
+                {isSearching && (
+                  <Loader2 size={16} className="animate-spin" style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: "var(--lime-400)" }} />
+                )}
+              </div>
 
               {/* Filter Chips */}
               <div className="flex flex-wrap gap-2 mb-4">
@@ -433,15 +518,11 @@ export default function ExercisePage() {
                     key={filter}
                     onClick={() => setActiveFilter(filter)}
                     style={{
-                      padding: "6px 14px",
-                      borderRadius: "var(--radius-full)",
-                      fontSize: 12,
-                      fontWeight: 600,
+                      padding: "6px 14px", borderRadius: "var(--radius-full)",
+                      fontSize: 12, fontWeight: 600,
                       background: activeFilter === filter ? "var(--lime-400)" : "var(--surface-elevated)",
                       color: activeFilter === filter ? "#0A0C0F" : "var(--text-secondary)",
-                      border: "none",
-                      cursor: "pointer",
-                      transition: "all 0.15s ease",
+                      border: "none", cursor: "pointer", transition: "all 0.15s ease",
                     }}
                   >
                     {filter}
@@ -449,70 +530,109 @@ export default function ExercisePage() {
                 ))}
               </div>
 
-              {/* Exercise Cards */}
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { name: "Barbell Squat", muscle: "Legs" },
-                  { name: "Bench Press", muscle: "Chest" },
-                  { name: "Deadlift", muscle: "Back" },
-                  { name: "OHP", muscle: "Shoulders" },
-                ].map((ex, i) => (
-                  <div
-                    key={i}
-                    className="card-hover"
-                    style={{
-                      padding: 14,
-                      borderRadius: "var(--radius-md)",
-                      background: "var(--surface-elevated)",
-                      border: "1px solid var(--border-subtle)",
-                      cursor: "pointer",
-                      transition: "all 0.2s ease",
-                    }}
-                  >
+              {/* Exercise Results */}
+              <div className="space-y-2" style={{ maxHeight: 480, overflowY: "auto" }}>
+                {filteredExercises.length === 0 && !isSearching && (
+                  <p style={{ fontSize: 13, color: "var(--text-tertiary)", textAlign: "center", padding: 20 }}>
+                    No exercises found. Try a different search.
+                  </p>
+                )}
+                {filteredExercises.map((ex) => (
+                  <div key={ex.id} className="animate-fade-in-up">
                     <div
+                      className="card-hover flex items-center gap-3"
+                      onClick={() => {
+                        setExpandedId(expandedId === ex.id ? null : ex.id);
+                        setLogForm({ sets: 3, reps: 10, weight_lbs: 0 });
+                      }}
                       style={{
-                        width: "100%",
-                        height: 60,
-                        borderRadius: "var(--radius-sm)",
-                        background: "var(--surface-card)",
-                        marginBottom: 8,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        padding: 12, borderRadius: "var(--radius-md)",
+                        background: expandedId === ex.id ? "var(--surface-hover)" : "var(--surface-elevated)",
+                        border: expandedId === ex.id ? "1px solid rgba(170, 255, 0, 0.3)" : "1px solid var(--border-subtle)",
+                        cursor: "pointer", transition: "all 0.2s ease",
                       }}
                     >
-                      <Flame size={20} style={{ color: "var(--text-tertiary)" }} />
+                      {/* GIF Thumbnail */}
+                      <div style={{
+                        width: 56, height: 56, borderRadius: "var(--radius-sm)",
+                        background: "var(--surface-card)", flexShrink: 0, overflow: "hidden",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>
+                        {ex.gif_url && !imgErrors[ex.id] ? (
+                          <img
+                            src={ex.gif_url} alt={ex.name}
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                            onError={() => setImgErrors(prev => ({ ...prev, [ex.id]: true }))}
+                            loading="lazy"
+                          />
+                        ) : (
+                          <Dumbbell size={20} style={{ color: "var(--text-tertiary)" }} />
+                        )}
+                      </div>
+
+                      {/* Info */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", textTransform: "capitalize", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {ex.name}
+                        </p>
+                        <div className="flex items-center gap-2" style={{ marginTop: 4 }}>
+                          <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: "var(--radius-sm)", background: "rgba(170, 255, 0, 0.1)", color: "var(--lime-400)", fontWeight: 500, textTransform: "capitalize" }}>
+                            {ex.muscle_group}
+                          </span>
+                          {ex.equipment && (
+                            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: "var(--radius-sm)", background: "var(--surface-card)", color: "var(--text-tertiary)", fontWeight: 500, textTransform: "capitalize" }}>
+                              {ex.equipment}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <ChevronRight size={14} style={{ color: "var(--text-tertiary)", transform: expandedId === ex.id ? "rotate(90deg)" : "none", transition: "transform 0.2s" }} />
                     </div>
-                    <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>{ex.name}</p>
-                    <span
-                      style={{
-                        fontSize: 10,
-                        padding: "2px 8px",
-                        borderRadius: "var(--radius-sm)",
-                        background: "rgba(170, 255, 0, 0.1)",
-                        color: "var(--lime-400)",
-                        fontWeight: 500,
-                      }}
-                    >
-                      {ex.muscle}
-                    </span>
+
+                    {/* Expanded Logging Form */}
+                    {expandedId === ex.id && (
+                      <div className="animate-fade-in-up" style={{
+                        padding: 14, marginTop: 4, borderRadius: "var(--radius-md)",
+                        background: "var(--surface-card)", border: "1px solid var(--border-subtle)",
+                      }}>
+                        <div className="grid grid-cols-3 gap-2 mb-3">
+                          <div>
+                            <label style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 500, display: "block", marginBottom: 4 }}>Sets</label>
+                            <input type="number" value={logForm.sets} min={1}
+                              onChange={(e) => setLogForm({ ...logForm, sets: Number(e.target.value) })}
+                              className="cl-input" style={{ fontSize: 14, padding: "8px 10px", textAlign: "center", fontFamily: "var(--font-mono)" }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 500, display: "block", marginBottom: 4 }}>Reps</label>
+                            <input type="number" value={logForm.reps} min={1}
+                              onChange={(e) => setLogForm({ ...logForm, reps: Number(e.target.value) })}
+                              className="cl-input" style={{ fontSize: 14, padding: "8px 10px", textAlign: "center", fontFamily: "var(--font-mono)" }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 500, display: "block", marginBottom: 4 }}>Weight (lbs)</label>
+                            <input type="number" value={logForm.weight_lbs} min={0}
+                              onChange={(e) => setLogForm({ ...logForm, weight_lbs: Number(e.target.value) })}
+                              className="cl-input" style={{ fontSize: 14, padding: "8px 10px", textAlign: "center", fontFamily: "var(--font-mono)" }}
+                            />
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleLogSet(ex.id, ex.name); }}
+                          disabled={isLogging}
+                          className="btn-primary w-full flex items-center justify-center gap-2"
+                          style={{ height: 38, fontSize: 13, opacity: isLogging ? 0.6 : 1 }}
+                        >
+                          {isLogging ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                          {isLogging ? "Logging..." : "Log Set"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
-
-              <button
-                className="w-full mt-4 text-center"
-                style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "var(--lime-400)",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                View full library →
-              </button>
             </div>
           </div>
         </div>
