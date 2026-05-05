@@ -22,6 +22,18 @@ export default function SignupPage() {
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
 
+  const friendlyAuthError = React.useCallback((err: unknown) => {
+    const authError = err as { code?: string; message?: string };
+    if (authError.code === "auth/popup-blocked" || authError.code === "auth/cancelled-popup-request") {
+      return "Your browser blocked the Google sign-in popup. We switched Google sign-in to a redirect flow.";
+    }
+    return authError.message?.replace(/^Firebase:\s*/i, "").replace(/\s*\([^)]+\)\.?$/, "") || "Google sign-in failed. Please try again.";
+  }, []);
+
+  React.useEffect(() => {
+    // Popup logic used instead
+  }, [friendlyAuthError, router]);
+
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -41,8 +53,8 @@ export default function SignupPage() {
         displayName: fullName
       });
       router.push("/");
-    } catch (err: any) {
-      const msg = err.message.replace("Firebase: ", "").replace("auth/", "");
+    } catch (err: unknown) {
+      const msg = friendlyAuthError(err);
       setError(msg);
     }
   };
@@ -53,8 +65,8 @@ export default function SignupPage() {
     try {
       await signInWithPopup(auth, provider);
       router.push("/");
-    } catch (err: any) {
-      setError("Google sign-in failed. Please try again.");
+    } catch (err: unknown) {
+      setError(friendlyAuthError(err));
     }
   };
 

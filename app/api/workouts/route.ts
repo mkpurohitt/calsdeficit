@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
 export async function POST(req: Request) {
@@ -17,6 +17,11 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    await supabase.from('users').upsert({
+      id: user_id,
+      name: user_id === 'guest' ? 'Guest' : 'Athlete',
+    }, { onConflict: 'id' });
 
     const { error } = await supabase.from('workout_logs').insert({
       user_id,

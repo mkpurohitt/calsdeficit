@@ -3,11 +3,13 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import AppLayout from "../../components/AppLayout";
 import { Droplet, Camera, Plus, ChevronDown, ChevronUp, Trash2, X, Upload, Loader2, Check, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/AuthContext";
+import { addFoodLog, deleteFoodLog, getDateKey, getFoodLogs, getUserGoal, saveUserGoal } from "../../lib/user-data";
+
 
 interface FoodLogEntry {
   id?: string;
+  user_id?: string;
   food_name: string;
   portion: string;
   calories: number;
@@ -19,6 +21,7 @@ interface FoodLogEntry {
   health_tip?: string;
   source?: string;
   created_at?: string;
+  date_key?: string;
 }
 
 interface MealSection {
@@ -29,11 +32,15 @@ interface MealSection {
 
 export default function DietPage() {
   const router = useRouter();
-  const { user } = useAuth() as { user: any };
+  const { user, loading: authLoading } = useAuth() as { user: any; loading: boolean };
   
   const [loading, setLoading] = useState(true);
   const [isOnboarded, setIsOnboarded] = useState(false); 
   const [userGoals, setUserGoals] = useState<any>(null);
+
+  // Weekly calorie data for the bar chart
+  const [weeklyData, setWeeklyData] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
+  const [streak, setStreak] = useState(0);
 
   // Form State
   const [age, setAge] = useState("");
@@ -56,19 +63,20 @@ export default function DietPage() {
   const [scanResult, setScanResult] = useState<FoodLogEntry | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [savingFood, setSavingFood] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Redirect unauthenticated users
+  useEffect(() => {
+    if (!authLoading && !user) router.push("/login");
+  }, [user, authLoading, router]);
 
   // Fetch existing goals on load
   useEffect(() => {
     if (!user) return;
     
     const fetchGoals = async () => {
-      const { data, error } = await supabase
-        .from('user_goals')
-        .select('*')
-        .eq('user_id', user.uid)
-        .single();
-        
+      const data = await getUserGoal(user.uid);
       if (data) {
         setUserGoals(data);
         setIsOnboarded(true);
@@ -83,23 +91,15 @@ export default function DietPage() {
   const fetchFoodLogs = useCallback(async () => {
     if (!user) return;
     const today = new Date();
-    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
-    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).toISOString();
-    
-    const { data, error } = await supabase
-      .from('food_logs')
-      .select('*')
-      .eq('user_id', user.uid)
-      .gte('created_at', startOfDay)
-      .lt('created_at', endOfDay)
-      .order('created_at', { ascending: true });
-    
-    if (data) {
-      setFoodLogs(data);
-    }
-    if (error) {
-      console.error('Error fetching food logs:', error);
-    }
+    const data = await getFoodLogs(user.uid);
+    const todayKey = getDateKey(today);
+
+    setFoodLogs(data
+      .filter((log) => log.date_key === todayKey)
+      .map((log: FoodLogEntry) => ({
+        ...log,
+        portion: log.portion || '1 serving',
+      })));
   }, [user]);
 
   useEffect(() => {
@@ -107,6 +107,52 @@ export default function DietPage() {
       fetchFoodLogs();
     }
   }, [user, isOnboarded, fetchFoodLogs]);
+
+  // Fetch weekly calorie data + streak
+  const fetchWeeklyData = useCallback(async () => {
+    if (!user) return;
+    const logs = await getFoodLogs(user.uid);
+    const today = new Date();
+    const daily = [0, 0, 0, 0, 0, 0, 0];
+
+    logs.forEach((log) => {
+      if (!log.created_at) return;
+      const logDate = new Date(log.created_at);
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - today.getDay());
+      weekStart.setHours(0, 0, 0, 0);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 7);
+      if (logDate >= weekStart && logDate < weekEnd) {
+        daily[logDate.getDay()] += log.calories || 0;
+      }
+    });
+    setWeeklyData(daily);
+
+    // Streak: count consecutive days with food_logs going back from today
+    let streakCount = 0;
+    for (let i = 0; i < 90; i++) {
+      const checkDate = new Date(today);
+      checkDate.setDate(today.getDate() - i);
+      const dateKey = getDateKey(checkDate);
+      const count = logs.filter((log) => log.date_key === dateKey).length;
+
+      if ((count ?? 0) > 0) {
+        streakCount++;
+      } else {
+        // If today has no logs yet, skip today but don't break
+        if (i === 0) continue;
+        break;
+      }
+    }
+    setStreak(streakCount);
+  }, [user]);
+
+  useEffect(() => {
+    if (user && isOnboarded) {
+      fetchWeeklyData();
+    }
+  }, [user, isOnboarded, fetchWeeklyData]);
 
   // Scanner handlers
   const openScanner = (mealType?: string) => {
@@ -116,6 +162,7 @@ export default function DietPage() {
     setScanResult(null);
     setScanError(null);
     setSaved(false);
+    setSavingFood(false);
     if (mealType) setScanMealType(mealType);
   };
 
@@ -126,6 +173,7 @@ export default function DietPage() {
     setScanResult(null);
     setScanError(null);
     setSaved(false);
+    setSavingFood(false);
   };
 
   const handleImageSelect = (file: File) => {
@@ -167,10 +215,6 @@ export default function DietPage() {
       }
 
       setScanResult(json.data);
-      if (json.db_saved) {
-        setSaved(true);
-        fetchFoodLogs(); // Refresh the food logs
-      }
     } catch (err: any) {
       setScanError(err.message || 'Network error');
     } finally {
@@ -180,30 +224,41 @@ export default function DietPage() {
 
   const handleSaveManually = async () => {
     if (!scanResult || !user) return;
-    
-    const { error } = await supabase.from('food_logs').insert({
-      user_id: user.uid,
-      food_name: scanResult.food_name,
-      portion: scanResult.portion,
-      calories: scanResult.calories,
-      protein_g: scanResult.protein_g,
-      carbs_g: scanResult.carbs_g,
-      fat_g: scanResult.fat_g,
-      fiber_g: scanResult.fiber_g,
-      meal_type: scanResult.meal_type,
-    });
+    setSavingFood(true);
+    setScanError(null);
 
-    if (!error) {
+    try {
+      await addFoodLog({
+        user_id: user.uid,
+        food_name: scanResult.food_name,
+        portion: scanResult.portion,
+        calories: scanResult.calories,
+        protein_g: scanResult.protein_g,
+        carbs_g: scanResult.carbs_g,
+        fat_g: scanResult.fat_g,
+        fiber_g: scanResult.fiber_g,
+        meal_type: scanMealType,
+        health_tip: scanResult.health_tip,
+        source: scanResult.source,
+        date_key: getDateKey(),
+        date: getDateKey(),
+      });
+
       setSaved(true);
+      setExpandedMeal(scanMealType);
       fetchFoodLogs();
+      fetchWeeklyData();
+    } catch (err: any) {
+      setScanError(err.message || 'Could not save this food log.');
+    } finally {
+      setSavingFood(false);
     }
   };
 
   const handleDeleteLog = async (id: string) => {
-    const { error } = await supabase.from('food_logs').delete().eq('id', id);
-    if (!error) {
-      setFoodLogs(prev => prev.filter(log => log.id !== id));
-    }
+    await deleteFoodLog(id);
+    setFoodLogs(prev => prev.filter(log => log.id !== id));
+    fetchWeeklyData();
   };
 
   // Handle calculation and database save
@@ -215,7 +270,17 @@ export default function DietPage() {
       return;
     }
 
-    const bmr = (10 * parseFloat(weight)) + (6.25 * parseFloat(height)) - (5 * parseInt(age)) + 5;
+    const w = parseFloat(weight) || 0;
+    const h = parseFloat(height) || 0;
+    const a = parseInt(age) || 0;
+
+    if (w <= 0 || h <= 0 || a <= 0) {
+      alert("Please enter valid age, weight and height values.");
+      return;
+    }
+
+    // Mifflin-St Jeor formula (male default)
+    const bmr = (10 * w) + (6.25 * h) - (5 * a) + 5;
     const tdee = Math.round(bmr * 1.55);
 
     let targetCalories = tdee;
@@ -227,17 +292,6 @@ export default function DietPage() {
     const fat = Math.round((targetCalories * 0.3) / 9);
 
     try {
-      const { error: userError } = await supabase.from('users').upsert({
-        id: user.uid,
-        email: user.email,
-        name: user.displayName || 'Athlete'
-      });
-
-      if (userError) {
-        alert("Database Error (Users): " + userError.message);
-        return;
-      }
-
       const newGoals = {
         user_id: user.uid,
         age: parseInt(age),
@@ -250,12 +304,7 @@ export default function DietPage() {
         fat_g: fat
       };
 
-      const { error: goalError } = await supabase.from('user_goals').upsert(newGoals);
-
-      if (goalError) {
-        alert("Database Error (Goals): " + goalError.message);
-        return;
-      }
+      await saveUserGoal(newGoals);
 
       setUserGoals(newGoals);
       setIsOnboarded(true);
@@ -608,16 +657,17 @@ export default function DietPage() {
             <div className="cl-card" style={{ borderRadius: 20, padding: 24 }}>
               <h3 style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)", marginBottom: 16 }}>Weekly Average</h3>
               <div className="flex items-end justify-between gap-1" style={{ height: 80 }}>
-                {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map((day, i) => {
-                  const heights = [65, 80, 55, 90, 70, 40, 50];
-                  const isToday = i === new Date().getDay() - 1;
+                {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((day, i) => {
+                  const maxCal = Math.max(...weeklyData, 1);
+                  const heightPct = Math.round((weeklyData[i] / maxCal) * 100);
+                  const isToday = i === new Date().getDay();
                   return (
                     <div key={day} className="flex flex-col items-center gap-1 flex-1">
                       <div
                         style={{
                           width: "100%",
                           maxWidth: 20,
-                          height: `${heights[i]}%`,
+                          height: `${Math.max(heightPct, 4)}%`,
                           borderRadius: "4px 4px 0 0",
                           background: isToday ? "var(--lime-400)" : "var(--surface-elevated)",
                           transition: "height 0.3s ease",
@@ -630,17 +680,23 @@ export default function DietPage() {
                   );
                 })}
               </div>
-              <p className="text-center mt-3" style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
-                Avg: <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>1,850</span> kcal/day
-              </p>
+              {(() => {
+                const daysWithData = weeklyData.filter(d => d > 0).length;
+                const weekAvg = daysWithData > 0 ? Math.round(weeklyData.reduce((a, b) => a + b, 0) / daysWithData) : 0;
+                return (
+                  <p className="text-center mt-3" style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
+                    Avg: <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>{weekAvg.toLocaleString()}</span> kcal/day
+                  </p>
+                );
+              })()}
             </div>
 
             {/* Nutrition Streak */}
             <div className="cl-card-accent" style={{ borderRadius: 20, padding: 24, textAlign: "center" }}>
               <div style={{ fontSize: 32, marginBottom: 4 }}>🔥</div>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 28, fontWeight: 700, color: "var(--warning)" }}>7</div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 28, fontWeight: 700, color: "var(--warning)" }}>{streak}</div>
               <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>Day Streak</div>
-              <p style={{ fontSize: 12, color: "var(--text-tertiary)" }}>Keep logging to maintain your streak</p>
+              <p style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{streak > 0 ? "Keep logging to maintain your streak" : "Start logging food to build a streak!"}</p>
             </div>
           </div>
         </div>
@@ -689,7 +745,6 @@ export default function DietPage() {
                   <h3 style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)", fontFamily: "var(--font-display)" }}>
                     AI Food Scanner
                   </h3>
-                  <p style={{ fontSize: 12, color: "var(--text-tertiary)" }}>Powered by Gemini AI</p>
                 </div>
               </div>
               <button
@@ -964,10 +1019,12 @@ export default function DietPage() {
                 ) : (
                   <button
                     onClick={handleSaveManually}
+                    disabled={savingFood}
                     className="btn-primary w-full flex items-center justify-center gap-2"
-                    style={{ height: 44, borderRadius: "var(--radius-md)", fontSize: 14 }}
+                    style={{ height: 44, borderRadius: "var(--radius-md)", fontSize: 14, opacity: savingFood ? 0.7 : 1 }}
                   >
-                    <Plus size={16} /> Save to {scanMealType}
+                    {savingFood ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : <Plus size={16} />}
+                    {savingFood ? "Saving..." : `Save to ${scanMealType}`}
                   </button>
                 )}
               </div>

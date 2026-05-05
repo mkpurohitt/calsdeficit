@@ -18,14 +18,33 @@ export default function LoginScreen() {
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
 
+  const friendlyAuthError = React.useCallback((err: unknown) => {
+    const authError = err as { code?: string; message?: string };
+    const code = authError?.code || "";
+    if (code === "auth/popup-blocked" || code === "auth/cancelled-popup-request") {
+      return "Your browser blocked the Google sign-in popup. We switched Google sign-in to a redirect flow.";
+    }
+    if (code === "auth/unauthorized-domain") {
+      return "Google sign-in is not enabled for this domain in Firebase Authentication.";
+    }
+    if (code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found") {
+      return "Email or password is incorrect.";
+    }
+    return authError?.message?.replace(/^Firebase:\s*/i, "").replace(/\s*\([^)]+\)\.?$/, "") || "Sign in failed. Please try again.";
+  }, []);
+
+  React.useEffect(() => {
+    // If we wanted to check redirect results we could do it here, but we are switching to popup
+  }, [friendlyAuthError, router]);
+
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     try {
       await signInWithEmailAndPassword(auth, email, password);
       router.push("/"); 
-    } catch (err: any) {
-      setError(err.message || "Failed to log in. Please check your credentials.");
+    } catch (err: unknown) {
+      setError(friendlyAuthError(err));
     }
   };
 
@@ -35,8 +54,8 @@ export default function LoginScreen() {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
       router.push("/");
-    } catch (err: any) {
-      setError(err.message || "Failed to log in with Google.");
+    } catch (err: unknown) {
+      setError(friendlyAuthError(err));
     }
   };
 

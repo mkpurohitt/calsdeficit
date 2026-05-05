@@ -2,7 +2,8 @@
 import { useState, useEffect, useRef, ChangeEvent, KeyboardEvent } from "react";
 import { useAuth } from "../lib/AuthContext";
 import { useRouter } from "next/navigation";
-import { Send, Camera, Video, Upload, LogOut, PlayCircle, Activity } from "lucide-react";
+import Link from "next/link";
+import { Send, Camera, Video, Upload, LogOut, PlayCircle, Activity, Loader2 } from "lucide-react";
 import ReactMarkdown from 'react-markdown'; 
 import { auth } from "../lib/firebase";
 import AppLayout from "../components/AppLayout";
@@ -11,6 +12,15 @@ interface Message {
   role: 'user' | 'ai';
   text: string;
   file?: string | null;
+  exercises?: ExerciseResult[];
+}
+
+interface ExerciseResult {
+  id: string;
+  name: string;
+  muscle_group: string;
+  equipment?: string | null;
+  gif_url?: string | null;
 }
 
 export default function Dashboard() {
@@ -24,6 +34,7 @@ export default function Dashboard() {
   const [mode, setMode] = useState<'chat' | 'food' | 'gym'>("chat");
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [processingLabel, setProcessingLabel] = useState("Thinking...");
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -34,6 +45,13 @@ export default function Dashboard() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    const requestedMode = new URLSearchParams(window.location.search).get("mode");
+    if (requestedMode === "gym" || requestedMode === "food") {
+      setMode(requestedMode);
+    }
+  }, []);
 
   const getFileTypes = () => {
     if (mode === 'food') return "image/*";
@@ -66,6 +84,17 @@ export default function Dashboard() {
     });
   };
 
+  const getProcessingLabel = (text: string, selectedMode: 'chat' | 'food' | 'gym', selectedFile: File | null) => {
+    if (selectedMode === 'food' || selectedFile?.type.startsWith('image/')) return "Calculating calories...";
+    if (selectedMode === 'gym' || selectedFile?.type.startsWith('video/')) return "Analyzing form...";
+
+    const lower = text.toLowerCase();
+    const exerciseWords = ["exercise", "exercises", "workout", "chest", "back", "legs", "arms", "shoulders", "abs", "core"];
+    if (exerciseWords.some((word) => lower.includes(word))) return "Searching exercise database...";
+
+    return "Thinking through your health query...";
+  };
+
   const handleSend = async () => {
     if (!input.trim() && !file) return;
 
@@ -80,6 +109,8 @@ export default function Dashboard() {
     
     const currentInput = input;
     const currentFile = file;
+    const currentMode = mode;
+    setProcessingLabel(getProcessingLabel(currentInput, currentMode, currentFile));
     setInput("");
     setFile(null);
 
@@ -99,14 +130,15 @@ export default function Dashboard() {
           message: currentInput,
           fileData: fileData,
           mimeType: mimeType,
-          mode: mode
+          mode: currentMode,
+          user_id: user?.uid
         })
       });
 
       const data = await response.json();
 
       if (data.success) {
-        setMessages((prev) => [...prev, { role: "ai", text: data.data }]);
+        setMessages((prev) => [...prev, { role: "ai", text: data.data, exercises: data.exercises || [] }]);
       } else {
         setMessages((prev) => [...prev, { role: "ai", text: "Error: " + (data.error || "Unknown error") }]);
       }
@@ -153,17 +185,7 @@ export default function Dashboard() {
             borderBottom: "1px solid var(--border-color)",
           }}
         >
-          <div className="flex items-center gap-3">
-            <h1
-              style={{
-                fontSize: 18,
-                fontWeight: 700,
-                fontFamily: "var(--font-display)",
-                color: "var(--text-primary)",
-              }}
-            >
-              CalAI
-            </h1>
+          <div className="flex items-center gap-2" aria-label="Assistant ready">
             <span
               style={{
                 width: 8,
@@ -288,6 +310,63 @@ export default function Dashboard() {
                     >
                       {msg.text}
                     </ReactMarkdown>
+                    {msg.exercises && msg.exercises.length > 0 && (
+                      <div className="grid gap-3 mt-3">
+                        {msg.exercises.map((ex) => (
+                          <div
+                            key={ex.id}
+                            className="flex items-center gap-3"
+                            style={{
+                              padding: 10,
+                              borderRadius: "var(--radius-md)",
+                              background: "var(--surface-card)",
+                              border: "1px solid var(--border-subtle)",
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: 72,
+                                height: 72,
+                                borderRadius: "var(--radius-sm)",
+                                background: "var(--surface-elevated)",
+                                overflow: "hidden",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {ex.gif_url ? (
+                                <img src={ex.gif_url} alt={ex.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" />
+                              ) : (
+                                <Activity size={22} style={{ color: "var(--text-tertiary)" }} />
+                              )}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <p style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", textTransform: "capitalize" }}>{ex.name}</p>
+                              <p style={{ fontSize: 11, color: "var(--text-tertiary)", textTransform: "capitalize", marginTop: 3 }}>
+                                {ex.muscle_group} {ex.equipment ? `- ${ex.equipment}` : ""}
+                              </p>
+                              <Link
+                                href={`/exercise/${ex.id}`}
+                                style={{
+                                  display: "inline-flex",
+                                  marginTop: 8,
+                                  padding: "6px 10px",
+                                  borderRadius: "var(--radius-sm)",
+                                  background: "var(--lime-400)",
+                                  color: "#0A0C0F",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                Open exercise
+                              </Link>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -297,10 +376,11 @@ export default function Dashboard() {
           {/* Typing Indicator */}
           {isProcessing && (
             <div className="flex justify-start">
-              <div className="typing-indicator">
-                <div className="typing-dot" />
-                <div className="typing-dot" />
-                <div className="typing-dot" />
+              <div className="typing-indicator" style={{ alignItems: "center", gap: 10 }}>
+                <Loader2 size={16} className="animate-spin" style={{ color: "var(--lime-400)" }} />
+                <span style={{ fontSize: 13, color: "var(--text-secondary)", fontWeight: 600 }}>
+                  {processingLabel}
+                </span>
               </div>
             </div>
           )}
