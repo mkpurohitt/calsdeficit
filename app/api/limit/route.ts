@@ -1,27 +1,24 @@
 import { NextResponse } from "next/server";
-import { globalUsage } from "../../../lib/rate-limit";
+import { requireUser } from "../../../lib/server/auth";
+import { getUsage } from "../../../lib/server/usage";
+import { tierConfig } from "../../../lib/entitlements";
+
+export const runtime = "nodejs";
 
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const userId = searchParams.get("userId");
+  const user = await requireUser(req);
+  if (user instanceof NextResponse) return user;
 
-  if (!userId) {
-    return NextResponse.json({ success: false, error: "User ID required" }, { status: 400 });
-  }
-
-  const today = new Date().toISOString().split("T")[0];
-  const usageMap = globalUsage.promptUsage as Map<string, { date: string; count: number }>;
-  const userUsage = usageMap?.get(userId);
-
-  let used = 0;
-  if (userUsage && userUsage.date === today) {
-    used = userUsage.count;
-  }
+  const usage = await getUsage(user.uid);
+  const config = tierConfig(usage.tier);
 
   return NextResponse.json({
     success: true,
-    used,
-    limit: 10,
-    remaining: Math.max(0, 10 - used),
+    used: usage.used,
+    limit: usage.limit,
+    remaining: Math.max(0, usage.limit - usage.used),
+    tier: usage.tier,
+    tierLabel: config.label,
+    adsEnabled: config.ads,
   });
 }

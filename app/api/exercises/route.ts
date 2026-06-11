@@ -1,48 +1,7 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-import { enrichExerciseList, enrichExerciseRecord } from '../../../lib/exercise-catalog';
+import { findExercises } from '../../../lib/server/exercise-db';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
-function normalizeInstructions(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
-  }
-
-  if (value && typeof value === 'object' && typeof (value as { en?: unknown }).en === 'string') {
-    return (value as { en: string }).en
-      .split(/\.\s+/)
-      .map((step) => step.trim())
-      .filter(Boolean)
-      .map((step) => (step.endsWith('.') ? step : `${step}.`));
-  }
-
-  if (typeof value === 'string') {
-    return value
-      .split(/\.\s+/)
-      .map((step) => step.trim())
-      .filter(Boolean)
-      .map((step) => (step.endsWith('.') ? step : `${step}.`));
-  }
-
-  return [];
-}
-
-function sanitizeExercise(exercise: any) {
-  return {
-    id: exercise.id,
-    name: exercise.name,
-    muscle_group: exercise.muscle_group,
-    equipment: exercise.equipment || null,
-    gif_url: exercise.gif_url || null,
-    body_part: exercise.body_part || null,
-    secondary_muscles: Array.isArray(exercise.secondary_muscles) ? exercise.secondary_muscles : [],
-    instructions: normalizeInstructions(exercise.instructions),
-  };
-}
+export const runtime = 'nodejs';
 
 export async function GET(req: Request) {
   try {
@@ -52,51 +11,22 @@ export async function GET(req: Request) {
     const muscle = searchParams.get('muscle')?.trim();
 
     if (id) {
-      const result = await supabase
-        .from('exercises')
-        .select('id, name, muscle_group, equipment, gif_url')
-        .eq('id', id)
-        .single();
-
-      if (result.error) {
-        return NextResponse.json(
-          { success: false, error: result.error.message },
-          { status: 404 }
-        );
+      const [exercise] = await findExercises({ id });
+      if (!exercise) {
+        return NextResponse.json({ success: false, error: 'Exercise not found' }, { status: 404 });
       }
-
-      const enriched = await enrichExerciseRecord(result.data);
-      return NextResponse.json({ success: true, data: sanitizeExercise(enriched) });
+      return NextResponse.json({ success: true, data: exercise });
     }
 
-    let result;
-    let queryBuilder = supabase.from('exercises').select('id, name, muscle_group, equipment, gif_url');
-
-    if (query) {
-      queryBuilder = queryBuilder.ilike('name', `%${query}%`);
-    }
-    
-    if (muscle) {
-      queryBuilder = queryBuilder.ilike('muscle_group', `%${muscle}%`);
-    }
-
-    result = await queryBuilder.limit(query || muscle ? 15 : 10);
-
-    if (result.error) {
-      console.error('[Exercises API] Supabase error:', result.error.message);
-      return NextResponse.json(
-        { success: false, error: result.error.message },
-        { status: 500 }
-      );
-    }
-
-    const enrichedList = await enrichExerciseList(result.data || []);
-    return NextResponse.json({ success: true, data: enrichedList.map(sanitizeExercise) });
-  } catch (error: any) {
+    const data = await findExercises({
+      query: query || undefined,
+      muscles: muscle ? [muscle] : undefined,
+      limit: query || muscle ? 15 : 10,
+    });
+    return NextResponse.json({ success: true, data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Exercise lookup failed.';
     console.error('[Exercises API] Fatal error:', error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
