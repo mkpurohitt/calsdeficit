@@ -1,6 +1,6 @@
--- Food reference catalog. Bulk-seeded from USDA FoodData Central /
--- Open Food Facts dumps in a later phase; verifyFood() falls back to live
--- API lookups until then.
+-- Food reference catalog — the Calolean food database. Bulk-seeded from the
+-- USDA FoodData Central CSV dump via scripts/seed_foods_usda.mjs (no live
+-- USDA API at runtime); verifyFood() falls back to Open Food Facts only.
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE TABLE IF NOT EXISTS foods (
@@ -21,3 +21,4 @@ CREATE TABLE IF NOT EXISTS foods (
 
 CREATE INDEX IF NOT EXISTS foods_search_trgm ON foods USING gin (search_name gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS foods_barcode ON foods (barcode);
+CREATE UNIQUE INDEX IF NOT EXISTS foods_source_external ON foods (source, external_id);

@@ -42,7 +42,7 @@ const sections: { heading: string; body: string[] }[] = [
   {
     heading: "6. Data sharing",
     body: [
-      "We do not sell your personal data. Data is processed by our infrastructure providers: Google (Firebase, Cloud SQL, Vertex AI, Analytics, AdSense) and Vercel (hosting). Nutrition lookups may query the public USDA FoodData Central and Open Food Facts databases using the food name only.",
+      "We do not sell your personal data. Data is processed by our infrastructure provider: Google Cloud (hosting, Firebase, Cloud SQL, Vertex AI, Analytics, AdSense). Nutrition data comes from our own database (derived from USDA FoodData Central); lookups may also query the public Open Food Facts database using the food name only.",
     ],
   },
   {

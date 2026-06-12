@@ -13,7 +13,7 @@ export interface FoodMacros {
 export interface FoodVerification {
   verified: boolean;
   match: FoodMacros | null;
-  source: "cloudsql" | "usda" | "off" | "none";
+  source: "cloudsql" | "off" | "none";
   sourceLabel: string;
 }
 
@@ -49,37 +49,6 @@ async function lookupCloudSql(searchName: string): Promise<FoodMacros | null> {
     };
   } catch (error) {
     console.error("[food-db] Cloud SQL lookup failed:", error);
-    return null;
-  }
-}
-
-async function fetchUSDA(query: string): Promise<FoodMacros | null> {
-  try {
-    if (!process.env.USDA_API_KEY) return null;
-    const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=1&api_key=${process.env.USDA_API_KEY}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const food = data?.foods?.[0];
-    if (!food?.foodNutrients) return null;
-    const nutrient = (num: number): number => {
-      const item = food.foodNutrients?.find(
-        (entry: { nutrientNumber?: string; value?: number }) => String(entry.nutrientNumber) === String(num)
-      );
-      return item?.value ?? 0;
-    };
-    const calories = nutrient(208);
-    const protein = nutrient(203);
-    if (calories === 0 && protein === 0) return null;
-    return {
-      foodName: food.description || query,
-      calories: Math.round(calories),
-      protein_g: Math.round(protein),
-      carbs_g: Math.round(nutrient(205)),
-      fat_g: Math.round(nutrient(204)),
-      fiber_g: Math.round(nutrient(291)),
-    };
-  } catch {
     return null;
   }
 }
@@ -137,8 +106,10 @@ async function writeCache(searchKey: string, macros: FoodMacros, source: string)
 }
 
 /**
- * Blueprint verification rule: a Cloud SQL trigram match (or exact USDA/OFF
- * hit) counts as a verified database match whose macros override AI estimates.
+ * Blueprint verification rule: a trigram match against the Calolean food
+ * database (Cloud SQL, seeded from USDA FoodData Central) — or an Open Food
+ * Facts hit as a last resort — counts as a verified match whose macros
+ * override AI estimates.
  */
 export async function verifyFood(searchName: string): Promise<FoodVerification> {
   const key = searchName.toLowerCase().trim();
@@ -146,10 +117,12 @@ export async function verifyFood(searchName: string): Promise<FoodVerification> 
   const cached = await readCache(key);
   if (cached) {
     const verified = cached.source !== "gemini";
+    // legacy "usda" cache rows fold into the Calolean database source
+    const source: FoodVerification["source"] = !verified ? "none" : cached.source === "off" ? "off" : "cloudsql";
     return {
       verified,
       match: cached.macros,
-      source: verified ? (cached.source as FoodVerification["source"]) : "none",
+      source,
       sourceLabel: verified ? labelFor(cached.source) : "Gemini Estimation",
     };
   }
@@ -158,12 +131,6 @@ export async function verifyFood(searchName: string): Promise<FoodVerification> 
   if (dbMatch) {
     await writeCache(key, dbMatch, "cloudsql");
     return { verified: true, match: dbMatch, source: "cloudsql", sourceLabel: "Calolean Database" };
-  }
-
-  const usda = await fetchUSDA(key);
-  if (usda) {
-    await writeCache(key, usda, "usda");
-    return { verified: true, match: usda, source: "usda", sourceLabel: "USDA Database" };
   }
 
   const off = await fetchOpenFoodFacts(key);
@@ -177,7 +144,8 @@ export async function verifyFood(searchName: string): Promise<FoodVerification> 
 
 function labelFor(source: string): string {
   if (source === "cloudsql") return "Calolean Database";
-  if (source === "usda") return "USDA Database";
+  // legacy cache rows written before the live-USDA fallback was removed
+  if (source === "usda") return "Calolean Database";
   if (source === "off") return "Open Food Facts";
   return "Gemini Estimation";
 }
