@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppLayout from "../../components/AppLayout";
 import FormCheckPanel from "../../components/FormCheckPanel";
 import { useAuth } from "../../lib/AuthContext";
 import { getDateKey, getDateKeyDaysAgo, getDay, getFormAnalyses, getWorkoutLogs, saveWorkoutLog } from "../../lib/user-data";
+import { STEP_GOAL } from "../../lib/config/app";
 import { CheckCircle, ChevronRight, Dumbbell, Flame, Footprints, Loader2, Plus, Search, Timer, Video } from "lucide-react";
 
 interface ExerciseRecord {
@@ -60,7 +61,8 @@ export default function ExercisePage() {
   const [activeFilter, setActiveFilter] = useState("All");
   const [steps, setSteps] = useState(0);
 
-  const today = new Date();
+  // Stable per-mount "today" so effects depending on it don't re-run every render
+  const today = useMemo(() => new Date(), []);
   const selectedDate = new Date(today);
   selectedDate.setDate(today.getDate() - today.getDay() + selectedDay);
   const selectedDateKey = getDateKey(selectedDate);
@@ -69,7 +71,7 @@ export default function ExercisePage() {
     ? "Today's Log"
     : selectedDate.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
 
-  const stepGoal = 8000;
+  const stepGoal = STEP_GOAL;
   const stepPercent = Math.min(steps / stepGoal, 1);
   const stepRingSize = 120;
   const stepR = (stepRingSize / 2) - 10;

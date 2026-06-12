@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import AppLayout from "../../components/AppLayout";
-import { ShoppingCart, Star, Bell, Sparkles, Leaf, Zap, Ban } from "lucide-react";
+import { Bell, Sparkles, Leaf, Zap, Ban } from "lucide-react";
 
 export default function ShopPage() {
   const [notifyEmail, setNotifyEmail] = useState("");

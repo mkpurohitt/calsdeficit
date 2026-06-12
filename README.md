@@ -32,7 +32,6 @@ verification falls back to live USDA / Open Food Facts lookups.
 
 | Script | Purpose |
 |---|---|
-| `node scripts/migrate-supabase-to-firestore.mjs` | One-shot copy of legacy Supabase user data into Firestore |
 | `node scripts/seed_exercises_cloudsql.mjs` | Seed the Cloud SQL `exercises` table (run `db/migrations/*.sql` first) |
 | `firebase deploy --only firestore:rules,firestore:indexes` | Deploy Firestore security rules + indexes |
 
