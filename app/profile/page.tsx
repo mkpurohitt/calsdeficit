@@ -4,10 +4,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppLayout from "../../components/AppLayout";
+import UpgradeBadge from "../../components/UpgradeBadge";
 import { useAuth } from "../../lib/AuthContext";
 import { auth } from "../../lib/firebase";
-import { getFoodLogs, getStepSync, getDateKey } from "../../lib/user-data";
-import { Bell, ChevronRight, CreditCard, Crown, Download, ExternalLink, Flame, LogOut, Shield, Trash2, User, Settings } from "lucide-react";
+import { apiFetch } from "../../lib/api-client";
+import { getFoodLogs, getDay, getDateKey, getDateKeyDaysAgo } from "../../lib/user-data";
+import type { Tier } from "../../lib/entitlements";
+import { deleteUser } from "firebase/auth";
+import { Bell, ChevronRight, CreditCard, Download, ExternalLink, Flame, LogOut, Shield, Trash2, User, Settings } from "lucide-react";
 
 interface ProfileItem {
   icon: typeof User;
@@ -20,10 +24,12 @@ export default function ProfilePage() {
   const { user } = useAuth() as { user: { uid?: string; email?: string | null; displayName?: string | null; metadata?: { creationTime?: string } } | null };
   const router = useRouter();
 
-  const [todayScans, setTodayScans] = useState(0);
   const [promptsUsed, setPromptsUsed] = useState(0);
+  const [promptLimit, setPromptLimit] = useState(10);
+  const [tier, setTier] = useState<Tier>("free");
   const [streak, setStreak] = useState(0);
-  const [fitStatus, setFitStatus] = useState("Manual sync ready");
+  const [fitStatus, setFitStatus] = useState("Not connected");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const userInitial = user?.displayName?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || "U";
   const userName = user?.displayName || "Fitness Enthusiast";
@@ -36,10 +42,8 @@ export default function ProfilePage() {
     if (!user?.uid) return;
 
     const loadProfile = async () => {
-      const logs = await getFoodLogs(user.uid!);
       const todayKey = getDateKey();
-      const todayLogs = logs.filter((log) => log.date_key === todayKey);
-      setTodayScans(todayLogs.length);
+      const logs = await getFoodLogs(user.uid!, { from: getDateKeyDaysAgo(90), to: todayKey });
 
       let currentStreak = 0;
       for (let dayOffset = 0; dayOffset < 90; dayOffset += 1) {
@@ -55,17 +59,19 @@ export default function ProfilePage() {
       }
       setStreak(currentStreak);
 
-      const stepSync = await getStepSync(user.uid!, todayKey);
-      if (stepSync?.source === "google-fit") {
+      const day = await getDay(user.uid!, todayKey);
+      if (day?.steps_source === "google-health") {
         setFitStatus("Connected");
       }
 
       try {
-        const res = await fetch(`/api/limit?userId=${user.uid}`);
+        const res = await apiFetch(`/api/limit`);
         if (res.ok) {
           const limitData = await res.json();
           if (limitData.success) {
             setPromptsUsed(limitData.used);
+            setPromptLimit(limitData.limit);
+            setTier(limitData.tier === "premium" ? "premium" : "free");
           }
         }
       } catch (err) {
@@ -93,7 +99,7 @@ export default function ProfilePage() {
     {
       title: "Connected Apps",
       items: [
-        { icon: ExternalLink, label: "Google Fit", href: "/profile/google-fit", subtitle: fitStatus },
+        { icon: ExternalLink, label: "Google Health", href: "/profile/google-fit", subtitle: fitStatus },
       ],
     },
     {
@@ -123,26 +129,7 @@ export default function ProfilePage() {
               <p style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 12 }}>Member since {memberSince}</p>
             </div>
 
-            <div className="cl-card-accent" style={{ borderRadius: 20, padding: 24 }}>
-              <div className="flex items-center gap-2 mb-4">
-                <Crown size={18} style={{ color: "var(--lime-400)" }} />
-                <span style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>Free Plan</span>
-              </div>
-
-              <div className="mb-4">
-                <div className="flex justify-between mb-2" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                  <span>AI Prompts used today</span>
-                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>{promptsUsed}/10</span>
-                </div>
-                <div className="macro-bar__track">
-                  <div className="macro-bar__fill" style={{ width: `${Math.min((promptsUsed / 10) * 100, 100)}%`, background: "var(--lime-400)" }} />
-                </div>
-              </div>
-
-              <button className="btn-primary w-full" style={{ height: 48, fontSize: 14 }}>
-                Upgrade to Pro
-              </button>
-            </div>
+            <UpgradeBadge tier={tier} used={promptsUsed} limit={promptLimit} />
           </div>
 
           <div className="lg:col-span-2 space-y-6">
@@ -213,10 +200,35 @@ export default function ProfilePage() {
               >
                 <LogOut size={18} /> Sign Out
               </button>
-              <button className="flex items-center justify-center gap-2" style={{ padding: "14px 20px", borderRadius: "var(--radius-lg)", background: "transparent", border: "1px solid var(--border-color)", color: "var(--text-tertiary)", fontSize: 14, fontWeight: 500 }}>
+              <button
+                onClick={async () => {
+                  if (!auth.currentUser) return;
+                  const confirmed = window.confirm(
+                    "Delete your Calolean account permanently? Your logs and goals will no longer be accessible."
+                  );
+                  if (!confirmed) return;
+                  setDeleteError(null);
+                  try {
+                    await deleteUser(auth.currentUser);
+                    router.push("/signup");
+                  } catch (err: unknown) {
+                    const code = (err as { code?: string })?.code;
+                    setDeleteError(
+                      code === "auth/requires-recent-login"
+                        ? "For security, please log out, log back in, and try deleting again."
+                        : "Could not delete the account. Please try again."
+                    );
+                  }
+                }}
+                className="flex items-center justify-center gap-2"
+                style={{ padding: "14px 20px", borderRadius: "var(--radius-lg)", background: "transparent", border: "1px solid var(--border-color)", color: "var(--text-tertiary)", fontSize: 14, fontWeight: 500, cursor: "pointer" }}
+              >
                 <Trash2 size={16} /> Delete Account
               </button>
             </div>
+            {deleteError && (
+              <p style={{ fontSize: 13, color: "var(--error)", fontWeight: 600 }}>{deleteError}</p>
+            )}
           </div>
         </div>
       </div>

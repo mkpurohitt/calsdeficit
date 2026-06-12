@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppLayout from "../../components/AppLayout";
+import FormCheckPanel from "../../components/FormCheckPanel";
 import { useAuth } from "../../lib/AuthContext";
-import { getDateKey, getFormAnalyses, getStepSync, getWorkoutLogs, saveFormAnalysis, saveWorkoutLog } from "../../lib/user-data";
-import { Camera, CheckCircle, ChevronRight, Dumbbell, Flame, Footprints, Loader2, Plus, Search, Timer, Video } from "lucide-react";
+import { getDateKey, getDateKeyDaysAgo, getDay, getFormAnalyses, getWorkoutLogs, saveWorkoutLog } from "../../lib/user-data";
+import { CheckCircle, ChevronRight, Dumbbell, Flame, Footprints, Loader2, Plus, Search, Timer, Video } from "lucide-react";
 
 interface ExerciseRecord {
   id: string;
@@ -39,14 +40,9 @@ const muscleQueryMap: Record<string, string> = {
 export default function ExercisePage() {
   const router = useRouter();
   const { user } = useAuth() as { user: { uid?: string } | null };
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  const [file, setFile] = useState<File | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [result, setResult] = useState<{ exercise_name?: string; score?: number; feedback?: { positive?: string; improvement?: string } } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
+  const [analysisVersion, setAnalysisVersion] = useState(0);
   const [logSuccess, setLogSuccess] = useState<string | null>(null);
   const [logError, setLogError] = useState<string | null>(null);
   const [isLogging, setIsLogging] = useState(false);
@@ -103,10 +99,10 @@ export default function ExercisePage() {
     const userId = user.uid;
 
     const loadUserData = async () => {
-      const [logs, analyses, stepSync] = await Promise.all([
-        getWorkoutLogs(userId),
+      const [logs, analyses, day] = await Promise.all([
+        getWorkoutLogs(userId, { from: getDateKeyDaysAgo(7), to: getDateKey() }),
         getFormAnalyses(userId),
-        getStepSync(userId, getDateKey()),
+        getDay(userId, getDateKey()),
       ]);
 
       const selectedLogs = logs.filter((log) => log.date_key === selectedDateKey);
@@ -139,51 +135,16 @@ export default function ExercisePage() {
         }))
       );
 
-      setSteps(stepSync?.steps || 0);
+      setSteps(day?.steps || 0);
     };
 
     loadUserData();
-  }, [user, selectedDateKey, logSuccess, result, today]);
+  }, [user, selectedDateKey, logSuccess, analysisVersion, today]);
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => fetchExercises(value, activeFilter), 300);
-  };
-
-  const handleAnalyze = async () => {
-    if (!file) return;
-    setIsAnalyzing(true);
-    setError(null);
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("user_id", user?.uid || "guest");
-
-    try {
-      const res = await fetch("http://localhost:8000/analyze-form", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) throw new Error("Analysis failed. Make sure the Python server is running.");
-
-      const data = await res.json();
-      setResult(data);
-
-      if (user?.uid) {
-        await saveFormAnalysis({
-          user_id: user.uid,
-          exercise_name: data.exercise_name || "Exercise",
-          score: Number(data.score) || 0,
-          created_at: new Date().toISOString(),
-        });
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Analysis failed.");
-    } finally {
-      setIsAnalyzing(false);
-    }
   };
 
   const handleLogSet = async (exercise: ExerciseRecord) => {
@@ -278,7 +239,7 @@ export default function ExercisePage() {
                 {steps.toLocaleString()} / {stepGoal.toLocaleString()} steps
               </p>
               <Link href="/profile/google-fit" style={{ fontSize: 11, color: "var(--lime-400)", marginTop: 4 }}>
-                Connect Google Fit or enter steps
+                Connect Google Health to sync steps
               </Link>
             </div>
 
@@ -305,86 +266,7 @@ export default function ExercisePage() {
               </div>
             </div>
 
-            <div className="cl-card-accent flex flex-col" style={{ borderRadius: 20, padding: 24 }}>
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 2 }}>Check Your Form</h3>
-                  <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>Upload a video for AI analysis</p>
-                </div>
-                {result && (
-                  <div style={{
-                    padding: "4px 10px",
-                    borderRadius: "100px",
-                    fontSize: 13,
-                    fontWeight: 700,
-                    background: "rgba(170, 255, 0, 0.12)",
-                    color: "var(--lime-400)",
-                  }}>
-                    {result.score}/100
-                  </div>
-                )}
-              </div>
-
-              {!result && !isAnalyzing && (
-                <>
-                  <input type="file" accept="video/*" className="hidden" ref={fileInputRef} onChange={(event) => setFile(event.target.files?.[0] || null)} />
-                  <div
-                    className="flex flex-col items-center justify-center gap-2"
-                    style={{
-                      height: 140,
-                      borderRadius: "var(--radius-lg)",
-                      border: "2px dashed var(--border-color)",
-                      background: "var(--surface-card)",
-                      cursor: "pointer",
-                    }}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <Camera size={28} style={{ color: "var(--lime-400)" }} />
-                    <span style={{ fontSize: 13, color: "var(--text-secondary)", textAlign: "center", padding: "0 10px" }}>
-                      {file ? file.name : "Drop video or click to upload"}
-                    </span>
-                    <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>MP4, MOV up to 50MB</span>
-                  </div>
-                  <button onClick={handleAnalyze} disabled={!file} className="btn-primary w-full mt-4" style={{ height: 44, fontSize: 14, opacity: !file ? 0.5 : 1 }}>
-                    Analyse Form
-                  </button>
-                  {error && <p style={{ color: "var(--error)", fontSize: 12, marginTop: 10, textAlign: "center" }}>{error}</p>}
-                </>
-              )}
-
-              {isAnalyzing && (
-                <div className="flex flex-col items-center justify-center gap-4 py-8" style={{ border: "2px dashed var(--border-color)", borderRadius: "var(--radius-lg)", background: "var(--surface-card)" }}>
-                  <Loader2 size={32} className="animate-spin" style={{ color: "var(--lime-400)" }} />
-                  <p style={{ fontSize: 13, color: "var(--text-secondary)", textAlign: "center", lineHeight: 1.5 }}>
-                    Analyzing biomechanics...
-                  </p>
-                </div>
-              )}
-
-              {result && !isAnalyzing && (
-                <div style={{ background: "var(--surface-elevated)", padding: 16, borderRadius: "var(--radius-md)", border: "1px solid var(--border-color)" }}>
-                  <span style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)" }}>
-                    {result.exercise_name || "Exercise"} Analysis
-                  </span>
-                  <p style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.5, marginTop: 12 }}>
-                    {result.feedback?.positive}
-                  </p>
-                  <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5, marginTop: 10 }}>
-                    {result.feedback?.improvement}
-                  </p>
-                  <button
-                    onClick={() => {
-                      setResult(null);
-                      setFile(null);
-                    }}
-                    className="w-full mt-5"
-                    style={{ fontSize: 13, color: "var(--lime-400)", background: "transparent", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: "8px 0", cursor: "pointer", fontWeight: 600 }}
-                  >
-                    Upload Another Video
-                  </button>
-                </div>
-              )}
-            </div>
+            <FormCheckPanel onResult={() => setAnalysisVersion((version) => version + 1)} />
           </div>
 
           <div className="space-y-6">

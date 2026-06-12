@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import { MessageSquare, Utensils, ShoppingBag, Dumbbell, User, Settings, Sun, Moon } from "lucide-react";
+import { MessageSquare, Utensils, ShoppingBag, Dumbbell, User, Sun, Moon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
@@ -9,7 +9,7 @@ import { useAuth } from "../lib/AuthContext";
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
-  const { user } = useAuth() as { user: any };
+  const { user } = useAuth() as { user: { displayName?: string | null; email?: string | null } | null };
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => setMounted(true), []);

@@ -4,15 +4,23 @@ import { useAuth } from "../lib/AuthContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Send, Camera, Video, Upload, LogOut, PlayCircle, Activity, Loader2 } from "lucide-react";
-import ReactMarkdown from 'react-markdown'; 
+import ReactMarkdown from 'react-markdown';
 import { auth } from "../lib/firebase";
 import AppLayout from "../components/AppLayout";
+import AdCard from "../components/ads/AdCard";
+import FoodScanCard from "../components/FoodScanCard";
+import { apiFetch } from "../lib/api-client";
+import { compressImage, fileToBase64 } from "../lib/image-compress";
+import type { FoodScanResult } from "../lib/schemas/food-scan";
 
 interface Message {
   role: 'user' | 'ai';
   text: string;
   file?: string | null;
   exercises?: ExerciseResult[];
+  scan?: FoodScanResult;
+  adKeywords?: string[];
+  adsEnabled?: boolean;
 }
 
 interface ExerciseResult {
@@ -24,9 +32,9 @@ interface ExerciseResult {
 }
 
 export default function Dashboard() {
-  const { user, loading } = useAuth() as { user: any; loading: boolean };
+  const { user, loading } = useAuth() as { user: { uid?: string } | null; loading: boolean };
   const router = useRouter();
-  
+
   const [messages, setMessages] = useState<Message[]>([
     { role: "ai", text: "Hey! Upload a food photo to scan nutrients, or a workout video for form analysis. 📷🏋️" }
   ]);
@@ -35,7 +43,7 @@ export default function Dashboard() {
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [processingLabel, setProcessingLabel] = useState("Thinking...");
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -60,8 +68,8 @@ export default function Dashboard() {
   };
 
   const handleModeSwitch = (newMode: 'food' | 'gym') => {
-    setMode(newMode);
-    setFile(null); 
+    setMode((current) => (current === newMode ? 'chat' : newMode));
+    setFile(null);
   };
 
   const handleLogout = () => {
@@ -73,15 +81,6 @@ export default function Dashboard() {
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0]);
     }
-  };
-
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (error) => reject(error);
-    });
   };
 
   const getProcessingLabel = (text: string, selectedMode: 'chat' | 'food' | 'gym', selectedFile: File | null) => {
@@ -98,15 +97,15 @@ export default function Dashboard() {
   const handleSend = async () => {
     if (!input.trim() && !file) return;
 
-    const userMsg: Message = { 
-      role: "user", 
-      text: input, 
-      file: file ? URL.createObjectURL(file) : null 
+    const userMsg: Message = {
+      role: "user",
+      text: input,
+      file: file ? URL.createObjectURL(file) : null
     };
-    
+
     setMessages((prev) => [...prev, userMsg]);
     setIsProcessing(true);
-    
+
     const currentInput = input;
     const currentFile = file;
     const currentMode = mode;
@@ -119,11 +118,16 @@ export default function Dashboard() {
       let mimeType = null;
 
       if (currentFile) {
-        fileData = await fileToBase64(currentFile);
-        mimeType = currentFile.type;
+        // Images are standardized on-device (≤768px / 75% JPEG) so each scan
+        // costs a flat 258 input tokens.
+        const prepared = currentFile.type.startsWith("image/")
+          ? await compressImage(currentFile)
+          : currentFile;
+        fileData = await fileToBase64(prepared);
+        mimeType = prepared.type;
       }
 
-      const response = await fetch('/api/chat', {
+      const response = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -131,14 +135,29 @@ export default function Dashboard() {
           fileData: fileData,
           mimeType: mimeType,
           mode: currentMode,
-          user_id: user?.uid
         })
       });
 
       const data = await response.json();
 
       if (data.success) {
-        setMessages((prev) => [...prev, { role: "ai", text: data.data, exercises: data.exercises || [] }]);
+        if (data.kind === 'food-scan' && data.scan) {
+          setMessages((prev) => [...prev, {
+            role: "ai",
+            text: "",
+            scan: data.scan as FoodScanResult,
+            adKeywords: data.adKeywords || [],
+            adsEnabled: data.adsEnabled ?? true,
+          }]);
+        } else {
+          setMessages((prev) => [...prev, {
+            role: "ai",
+            text: data.data,
+            exercises: data.exercises || [],
+            adKeywords: data.adKeywords || [],
+            adsEnabled: data.adsEnabled ?? true,
+          }]);
+        }
       } else {
         setMessages((prev) => [...prev, { role: "ai", text: "Error: " + (data.error || "Unknown error") }]);
       }
@@ -167,7 +186,7 @@ export default function Dashboard() {
     </div>
   );
 
-  const modeChips: { key: 'food' | 'gym'; icon: any; label: string }[] = [
+  const modeChips: { key: 'food' | 'gym'; icon: typeof Camera; label: string }[] = [
     { key: 'food', icon: Camera, label: "Scan Food" },
     { key: 'gym', icon: Video, label: "Gym Form" },
   ];
@@ -175,7 +194,7 @@ export default function Dashboard() {
   return (
     <AppLayout>
       <div className="flex flex-col h-full" style={{ minHeight: "calc(100vh - 0px)" }}>
-        
+
         {/* ── Top Bar ── */}
         <header
           className="flex items-center justify-between px-6 shrink-0"
@@ -227,41 +246,15 @@ export default function Dashboard() {
                       style={{ borderRadius: "var(--radius-md)", maxHeight: 160, objectFit: "cover" }}
                     />
                 )}
-                
-                {/* 1. FOOD MODE CARD */}
-                {msg.role === 'ai' && msg.text.includes('"food_name"') ? (
-                   (() => {
-                     try {
-                       const cleanJson = msg.text.replace(/```json|```/g, '');
-                       const data = JSON.parse(cleanJson);
-                       return (
-                         <div className="space-y-3">
-                           <h3 style={{ fontSize: 17, fontWeight: 700, color: "var(--lime-400)" }}>{data.food_name}</h3>
-                           <div style={{ fontFamily: "var(--font-mono)", fontSize: 32, fontWeight: 700, color: "var(--text-primary)" }}>
-                             {data.calories} <span style={{ fontSize: 13, fontWeight: 400, color: "var(--text-tertiary)" }}>kcal</span>
-                           </div>
-                           <div className="grid grid-cols-3 gap-2 text-center">
-                             {[
-                               { label: "Protein", value: data.macros.protein, color: "var(--macro-protein)" },
-                               { label: "Carbs", value: data.macros.carbs, color: "var(--macro-carbs)" },
-                               { label: "Fat", value: data.macros.fats, color: "var(--macro-fat)" },
-                             ].map((m, i) => (
-                               <div key={i} style={{ background: "rgba(0,0,0,0.2)", padding: "8px", borderRadius: "var(--radius-sm)" }}>
-                                 <div style={{ color: m.color, fontWeight: 700, fontSize: 14, fontFamily: "var(--font-mono)" }}>{m.value}</div>
-                                 <div style={{ color: "var(--text-tertiary)", fontSize: 11, marginTop: 2 }}>{m.label}</div>
-                               </div>
-                             ))}
-                           </div>
-                           <p style={{ fontSize: 13, color: "var(--text-secondary)", fontStyle: "italic", borderLeft: "2px solid var(--lime-400)", paddingLeft: 10 }}>
-                             {data.health_tip}
-                           </p>
-                         </div>
-                       );
-                     } catch (e) {
-                       return <p className="whitespace-pre-wrap">{msg.text}</p>;
-                     }
-                   })()
-                
+
+                {/* 1. FOOD SCAN CARD (structured pipeline) */}
+                {msg.role === 'ai' && msg.scan ? (
+                  <FoodScanCard
+                    scan={msg.scan}
+                    adKeywords={msg.adKeywords}
+                    adsEnabled={msg.adsEnabled}
+                  />
+
                 // 2. GYM MODE CARD
                 ) : msg.role === 'ai' && msg.text.includes('SEARCH_QUERY:') ? (
                   (() => {
@@ -291,6 +284,7 @@ export default function Dashboard() {
                          >
                            <PlayCircle size={16} /> Watch Correct Form
                          </a>
+                         <AdCard keywords={msg.adKeywords} enabled={msg.adsEnabled} />
                        </div>
                      );
                   })()
@@ -298,14 +292,14 @@ export default function Dashboard() {
                 // 3. NORMAL TEXT
                 ) : (
                   <div style={{ fontSize: 14, lineHeight: 1.6 }}>
-                    <ReactMarkdown 
+                    <ReactMarkdown
                       components={{
-                        h1: ({node, ...props}) => <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--lime-400)", marginBottom: 8, fontFamily: "var(--font-display)" }} {...props} />,
-                        h2: ({node, ...props}) => <h2 style={{ fontSize: 17, fontWeight: 700, color: "var(--lime-400)", marginBottom: 8, fontFamily: "var(--font-display)" }} {...props} />,
-                        strong: ({node, ...props}) => <span style={{ fontWeight: 700, color: "var(--lime-400)" }} {...props} />,
-                        ul: ({node, ...props}) => <ul style={{ listStyleType: "disc", paddingLeft: 16, marginBottom: 8 }} {...props} />,
-                        li: ({node, ...props}) => <li style={{ marginBottom: 4 }} {...props} />,
-                        p: ({node, ...props}) => <p style={{ marginBottom: 8 }} {...props} />,
+                        h1: ({...props}) => <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--lime-400)", marginBottom: 8, fontFamily: "var(--font-display)" }} {...props} />,
+                        h2: ({...props}) => <h2 style={{ fontSize: 17, fontWeight: 700, color: "var(--lime-400)", marginBottom: 8, fontFamily: "var(--font-display)" }} {...props} />,
+                        strong: ({...props}) => <span style={{ fontWeight: 700, color: "var(--lime-400)" }} {...props} />,
+                        ul: ({...props}) => <ul style={{ listStyleType: "disc", paddingLeft: 16, marginBottom: 8 }} {...props} />,
+                        li: ({...props}) => <li style={{ marginBottom: 4 }} {...props} />,
+                        p: ({...props}) => <p style={{ marginBottom: 8 }} {...props} />,
                       }}
                     >
                       {msg.text}
@@ -367,6 +361,10 @@ export default function Dashboard() {
                         ))}
                       </div>
                     )}
+                    {/* Contextual native ad after substantial AI answers */}
+                    {msg.role === 'ai' && idx > 0 && (msg.exercises?.length || msg.text.length > 280) ? (
+                      <AdCard keywords={msg.adKeywords} enabled={msg.adsEnabled} />
+                    ) : null}
                   </div>
                 )}
               </div>

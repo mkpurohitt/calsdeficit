@@ -4,7 +4,12 @@ import AppLayout from "../../components/AppLayout";
 import { Droplet, Camera, Plus, ChevronDown, ChevronUp, Trash2, X, Upload, Loader2, Check, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../lib/AuthContext";
-import { addFoodLog, deleteFoodLog, getDateKey, getFoodLogs, getUserGoal, saveUserGoal } from "../../lib/user-data";
+import { addFoodLog, deleteFoodLog, getDateKey, getDateKeyDaysAgo, getDay, getFoodLogs, getUserGoal, saveDay, saveUserGoal } from "../../lib/user-data";
+import { apiFetch } from "../../lib/api-client";
+import { compressImage } from "../../lib/image-compress";
+import FoodScanCard from "../../components/FoodScanCard";
+import type { FoodScanResult } from "../../lib/schemas/food-scan";
+import { WATER_GLASS_ML, WATER_GOAL_ML } from "../../lib/config/app";
 
 
 interface FoodLogEntry {
@@ -20,6 +25,8 @@ interface FoodLogEntry {
   meal_type: string;
   health_tip?: string;
   source?: string;
+  verified?: boolean;
+  confidence?: number;
   created_at?: string;
   date_key?: string;
 }
@@ -32,11 +39,11 @@ interface MealSection {
 
 export default function DietPage() {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth() as { user: any; loading: boolean };
+  const { user, loading: authLoading } = useAuth() as { user: { uid: string } | null; loading: boolean };
   
   const [loading, setLoading] = useState(true);
   const [isOnboarded, setIsOnboarded] = useState(false); 
-  const [userGoals, setUserGoals] = useState<any>(null);
+  const [userGoals, setUserGoals] = useState<{ daily_calories?: number; protein_g?: number; carbs_g?: number; fat_g?: number } | null>(null);
 
   // Weekly calorie data for the bar chart
   const [weeklyData, setWeeklyData] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
@@ -60,7 +67,9 @@ export default function DietPage() {
   const [scanPreview, setScanPreview] = useState<string | null>(null);
   const [scanMealType, setScanMealType] = useState("Breakfast");
   const [scanning, setScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<FoodLogEntry | null>(null);
+  const [scanResult, setScanResult] = useState<FoodScanResult | null>(null);
+  const [scanAdKeywords, setScanAdKeywords] = useState<string[]>([]);
+  const [scanAdsEnabled, setScanAdsEnabled] = useState(true);
   const [scanError, setScanError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [savingFood, setSavingFood] = useState(false);
@@ -90,16 +99,13 @@ export default function DietPage() {
   // Fetch today's food logs
   const fetchFoodLogs = useCallback(async () => {
     if (!user) return;
-    const today = new Date();
-    const data = await getFoodLogs(user.uid);
-    const todayKey = getDateKey(today);
+    const todayKey = getDateKey();
+    const data = await getFoodLogs(user.uid, { from: todayKey, to: todayKey });
 
-    setFoodLogs(data
-      .filter((log) => log.date_key === todayKey)
-      .map((log: FoodLogEntry) => ({
-        ...log,
-        portion: log.portion || '1 serving',
-      })));
+    setFoodLogs(data.map((log: FoodLogEntry) => ({
+      ...log,
+      portion: log.portion || '1 serving',
+    })));
   }, [user]);
 
   useEffect(() => {
@@ -108,10 +114,18 @@ export default function DietPage() {
     }
   }, [user, isOnboarded, fetchFoodLogs]);
 
-  // Fetch weekly calorie data + streak
+  // Persisted water intake for today
+  useEffect(() => {
+    if (!user) return;
+    getDay(user.uid, getDateKey()).then((day) => {
+      if (day?.water_ml) setWaterGlasses(Math.round(day.water_ml / WATER_GLASS_ML));
+    });
+  }, [user]);
+
+  // Fetch calorie data + streak from the last 90 days (bounded read)
   const fetchWeeklyData = useCallback(async () => {
     if (!user) return;
-    const logs = await getFoodLogs(user.uid);
+    const logs = await getFoodLogs(user.uid, { from: getDateKeyDaysAgo(90), to: getDateKey() });
     const today = new Date();
     const daily = [0, 0, 0, 0, 0, 0, 0];
 
@@ -201,12 +215,13 @@ export default function DietPage() {
     setScanResult(null);
 
     try {
+      // Standardize on-device (≤768px / 75% JPEG → flat 258 Gemini tokens)
+      const compressed = await compressImage(scanImage);
       const formData = new FormData();
-      formData.append('image', scanImage);
+      formData.append('image', compressed);
       formData.append('meal_type', scanMealType);
-      if (user?.uid) formData.append('user_id', user.uid);
 
-      const res = await fetch('/api/food-scan', { method: 'POST', body: formData });
+      const res = await apiFetch('/api/food-scan', { method: 'POST', body: formData });
       const json = await res.json();
 
       if (!json.success) {
@@ -215,8 +230,10 @@ export default function DietPage() {
       }
 
       setScanResult(json.data);
-    } catch (err: any) {
-      setScanError(err.message || 'Network error');
+      setScanAdKeywords(json.adKeywords || []);
+      setScanAdsEnabled(json.adsEnabled ?? true);
+    } catch (err) {
+      setScanError(err instanceof Error ? err.message : 'Network error');
     } finally {
       setScanning(false);
     }
@@ -240,6 +257,8 @@ export default function DietPage() {
         meal_type: scanMealType,
         health_tip: scanResult.health_tip,
         source: scanResult.source,
+        verified: scanResult.verified,
+        confidence: scanResult.confidence,
         date_key: getDateKey(),
         date: getDateKey(),
       });
@@ -248,17 +267,26 @@ export default function DietPage() {
       setExpandedMeal(scanMealType);
       fetchFoodLogs();
       fetchWeeklyData();
-    } catch (err: any) {
-      setScanError(err.message || 'Could not save this food log.');
+    } catch (err) {
+      setScanError(err instanceof Error ? err.message : 'Could not save this food log.');
     } finally {
       setSavingFood(false);
     }
   };
 
   const handleDeleteLog = async (id: string) => {
-    await deleteFoodLog(id);
+    if (!user) return;
+    await deleteFoodLog(user.uid, id);
     setFoodLogs(prev => prev.filter(log => log.id !== id));
     fetchWeeklyData();
+  };
+
+  const handleAddWater = () => {
+    setWaterGlasses(prev => {
+      const next = Math.min(prev + 1, 8);
+      if (user) saveDay(user.uid, getDateKey(), { water_ml: next * WATER_GLASS_ML });
+      return next;
+    });
   };
 
   // Handle calculation and database save
@@ -309,13 +337,13 @@ export default function DietPage() {
       setUserGoals(newGoals);
       setIsOnboarded(true);
 
-    } catch (err: any) {
-      alert("Unexpected Error: " + err.message);
+    } catch (err) {
+      alert("Unexpected Error: " + (err instanceof Error ? err.message : String(err)));
     }
   };
   
-  const totalWaterMl = waterGlasses * 300;
-  const waterGoal = 2500;
+  const totalWaterMl = waterGlasses * WATER_GLASS_ML;
+  const waterGoal = WATER_GOAL_ML;
 
   // Dynamic values from food logs
   const consumed = foodLogs.reduce((sum, log) => sum + (log.calories || 0), 0);
@@ -523,7 +551,7 @@ export default function DietPage() {
               </div>
 
               <button
-                onClick={() => setWaterGlasses(prev => Math.min(prev + 1, 8))}
+                onClick={handleAddWater}
                 className="btn-secondary w-full flex items-center justify-center gap-2"
                 style={{ fontSize: 13, padding: "8px 16px" }}
               >
@@ -908,98 +936,13 @@ export default function DietPage() {
                 padding: 20,
                 animation: "floatIn 0.3s ease",
               }}>
-                <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
-                  <div>
-                    <h4 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>{scanResult.food_name}</h4>
-                    <p style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{scanResult.portion}</p>
-                  </div>
-                  <div style={{
-                    padding: "6px 14px",
-                    borderRadius: "var(--radius-full)",
-                    background: "rgba(190, 242, 100, 0.15)",
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 18,
-                    fontWeight: 700,
-                    color: "var(--lime-400)",
-                  }}>
-                    {scanResult.calories} kcal
-                  </div>
+                <div style={{ marginBottom: 16 }}>
+                  <FoodScanCard
+                    scan={scanResult}
+                    adKeywords={scanAdKeywords}
+                    adsEnabled={scanAdsEnabled}
+                  />
                 </div>
-
-                {/* Macro Grid */}
-                <div className="grid grid-cols-4 gap-2" style={{ marginBottom: 16 }}>
-                  {[
-                    { label: "Protein", value: `${scanResult.protein_g}g`, color: "var(--macro-protein)" },
-                    { label: "Carbs", value: `${scanResult.carbs_g}g`, color: "var(--macro-carbs)" },
-                    { label: "Fat", value: `${scanResult.fat_g}g`, color: "var(--macro-fat)" },
-                    { label: "Fiber", value: `${scanResult.fiber_g}g`, color: "var(--macro-fiber)" },
-                  ].map((m, i) => (
-                    <div key={i} style={{
-                      textAlign: "center",
-                      padding: "10px 4px",
-                      borderRadius: "var(--radius-md)",
-                      background: "var(--surface-card)",
-                    }}>
-                      <div style={{
-                        width: 8, height: 8, borderRadius: "50%",
-                        background: m.color, margin: "0 auto 6px",
-                      }} />
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>
-                        {m.value}
-                      </div>
-                      <div style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 2 }}>
-                        {m.label}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Health Tip */}
-                {scanResult.health_tip && (
-                  <div style={{
-                    padding: "10px 14px",
-                    borderRadius: "var(--radius-md)",
-                    background: "rgba(190, 242, 100, 0.08)",
-                    borderLeft: "3px solid var(--lime-400)",
-                    fontSize: 12,
-                    color: "var(--text-secondary)",
-                    lineHeight: 1.5,
-                    marginBottom: 16,
-                  }}>
-                    💡 {scanResult.health_tip}
-                  </div>
-                )}
-
-                {/* Source Badge */}
-                {scanResult.source && (
-                  <div style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    marginBottom: 16,
-                    padding: "6px 12px",
-                    borderRadius: "var(--radius-full)",
-                    background: scanResult.source === 'Gemini Estimation' 
-                      ? "rgba(255, 193, 7, 0.1)" 
-                      : "rgba(77, 199, 77, 0.1)",
-                    width: "fit-content",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: scanResult.source === 'Gemini Estimation'
-                      ? "#FFC107"
-                      : "#4dc74d",
-                  }}>
-                    <span style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: "50%",
-                      background: scanResult.source === 'Gemini Estimation'
-                        ? "#FFC107"
-                        : "#4dc74d",
-                    }} />
-                    {scanResult.source === 'Gemini Estimation' ? '⚠️ AI Estimate' : `✓ ${scanResult.source}`}
-                  </div>
-                )}
 
                 {/* Save / Done Button */}
                 {saved ? (

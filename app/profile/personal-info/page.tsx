@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import AppLayout from "../../../components/AppLayout";
 import { useAuth } from "../../../lib/AuthContext";
 import { auth } from "../../../lib/firebase";
@@ -8,16 +8,13 @@ import { updateProfile } from "firebase/auth";
 
 export default function PersonalInfoPage() {
   const { user } = useAuth() as { user: { displayName?: string | null; email?: string | null } | null };
-  const [displayName, setDisplayName] = useState("");
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    setDisplayName(user?.displayName || "");
-  }, [user]);
+  const value = displayName ?? user?.displayName ?? "";
 
   const handleSave = async () => {
     if (!auth.currentUser) return;
-    await updateProfile(auth.currentUser, { displayName });
+    await updateProfile(auth.currentUser, { displayName: value });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -30,7 +27,7 @@ export default function PersonalInfoPage() {
           <div className="space-y-4">
             <div>
               <label className="cl-label">Display Name</label>
-              <input className="cl-input" value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+              <input className="cl-input" value={value} onChange={(event) => setDisplayName(event.target.value)} />
             </div>
             <div>
               <label className="cl-label">Email Address</label>

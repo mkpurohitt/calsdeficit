@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Calolean — AI Health Assistant
 
-## Getting Started
+Train smarter. Eat cleaner. Get leaner. Calolean is an AI-powered food-tech app:
+a ChatGPT-style assistant that scans food photos for verified nutrition data,
+analyzes gym form on-device, and tracks diet, water, workouts, and steps —
+monetized with contextual native ads, affiliate links, and subscriptions.
 
-First, run the development server:
+**Architecture, phase plan, costs, and ops runbook:** see [`PRODUCTION_UPGRADE.md`](./PRODUCTION_UPGRADE.md).
+
+## Stack
+
+- **Next.js 16** (App Router) + React 19 + TypeScript + Tailwind v4
+- **Firebase** — Auth + Firestore (all user data, security-rules protected)
+- **Google Cloud** — Vertex AI (Gemini 3.1 Flash-Lite), Cloud SQL Postgres (food + exercise reference data)
+- **MediaPipe Tasks Vision** — pose analysis runs in the browser; videos never leave the device
+- **Google AdSense** native in-article ads + Amazon affiliate links
+- **Google Health API** — step sync (successor to the deprecated Google Fit)
+
+## Getting started
 
 ```bash
+npm install
+cp .env.example .env.local   # paste your credentials (see comments per variable)
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The app degrades gracefully while credentials are missing: Gemini falls back to
+`GOOGLE_API_KEY`, the exercise library falls back to the open dataset, and food
+verification falls back to live USDA / Open Food Facts lookups.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Useful scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Script | Purpose |
+|---|---|
+| `node scripts/migrate-supabase-to-firestore.mjs` | One-shot copy of legacy Supabase user data into Firestore |
+| `node scripts/seed_exercises_cloudsql.mjs` | Seed the Cloud SQL `exercises` table (run `db/migrations/*.sql` first) |
+| `firebase deploy --only firestore:rules,firestore:indexes` | Deploy Firestore security rules + indexes |
 
-## Learn More
+## Quality gates
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npx eslint .       # lint
+npx tsc --noEmit   # types
+npm run build      # production build
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+CI runs all three on every push (`.github/workflows/ci.yml`).

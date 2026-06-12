@@ -87,10 +87,10 @@
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
   --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.14);
 
-  /* ── Typography ── */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-display: 'Space Grotesk', var(--font-sans);
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  /* ── Typography (loaded via next/font in app/layout.tsx) ── */
+  --font-sans: var(--font-inter, 'Inter'), -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: var(--font-space-grotesk, 'Space Grotesk'), var(--font-sans);
+  --font-mono: var(--font-jetbrains-mono, 'JetBrains Mono'), 'Fira Code', monospace;
 
   /* ── Semantic Mapping — Light Mode (default with class-based dark) ── */
   --bg-app:          var(--light-100);
@@ -440,4 +440,40 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-tertiary);
+}
+
+/* ────────────────────────────────────────────
+   6.  SMOOTHNESS & ACCESSIBILITY POLISH
+   ──────────────────────────────────────────── */
+
+/* Visible keyboard focus in brand color */
+:focus-visible {
+  outline: 2px solid var(--lime-400);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.cl-input:focus-visible { outline: none; }
+
+/* Page content enters with a soft rise */
+main > * {
+  animation: fade-in-up 0.35s ease-out both;
+}
+
+/* Buttons get a subtle press feel everywhere */
+button { -webkit-tap-highlight-color: transparent; }
+button:active:not(:disabled) { transform: scale(0.985); }
+
+/* Image rendering during lazy load */
+img { content-visibility: auto; }
+
+/* Honor users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

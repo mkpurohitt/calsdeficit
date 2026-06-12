@@ -1,6 +1,10 @@
 # Calolean — Production Upgrade Blueprint
 
-> **Status:** Approved blueprint, ready for phase-by-phase execution.
+> **Status:** ✅ IMPLEMENTED (all code phases P0–P10). What remains is the manual
+> console work listed in §6 — create the cloud resources, paste credentials into
+> `.env.local` / Vercel using `.env.example`, run the migration/seed scripts, and
+> the corresponding feature lights up. The app builds and runs with graceful
+> fallbacks before any credentials are configured.
 > **Scope of this document:** Everything needed to take the current app to full production launch — Google Cloud migration (Vertex AI, Cloud SQL, Firestore), the blueprint food-scan pipeline with native-ad monetization, on-device form analysis, Google Health API steps, entitlements, and production hardening.
 > **Explicitly deferred (Phase 11+):** Food database bulk seeding (USDA / Open Food Facts / Kaggle), shop payment gateway + delivery APIs.
 
