@@ -12,7 +12,6 @@
     "@google-cloud/cloud-sql-connector": "^1.11.1",
     "@google/genai": "^1.52.0",
     "@mediapipe/tasks-vision": "^0.10.35",
-    "@next/third-parties": "^16.2.9",
     "firebase": "^12.8.0",
     "firebase-admin": "^13.10.0",
     "lucide-react": "^0.563.0",

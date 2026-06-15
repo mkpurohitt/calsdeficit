@@ -4,7 +4,7 @@ import React from "react";
 import type { Metadata, Viewport } from "next";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
-import { GoogleAnalytics } from "@next/third-parties/google";
+import Script from "next/script";
 import ConsentManager from "../components/ads/ConsentManager";
 import { APP_DESCRIPTION, APP_NAME, APP_TAGLINE, APP_URL, BRAND_DARK } from "../lib/config/app";
 
@@ -58,7 +58,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </AuthProvider>
         </ThemeProvider>
         <ConsentManager />
-        {GA_ID && <GoogleAnalytics gaId={GA_ID} />}
+        {GA_ID && (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`}
+              strategy="afterInteractive"
+            />
+            <Script id="ga-init" strategy="afterInteractive">
+              {`window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', '${GA_ID}');`}
+            </Script>
+          </>
+        )}
       </body>
     </html>
   );
