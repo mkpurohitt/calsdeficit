@@ -1,5 +1,6 @@
--- Reference exercise catalog (1,300+ records). Seed with
--- scripts/seed_exercises_cloudsql.mjs after creating the instance.
+-- Reference exercise catalog (from free-exercise-db). Prepare exercises.csv
+-- with scripts/dataprep/exercises_to_csv.py, then load via db/load/staging.sql
+-- + db/load/transform.sql.
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE TABLE IF NOT EXISTS exercises (

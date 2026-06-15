@@ -27,7 +27,7 @@ npm run dev
 The app degrades gracefully while credentials are missing: Gemini falls back to
 `GOOGLE_API_KEY`, the exercise library falls back to the open dataset, and food
 verification falls back to live Open Food Facts lookups until the Cloud SQL
-food database (seeded from USDA FoodData Central) is in place.
+food database (built from USDA FoodData Central + Open Food Facts) is in place.
 
 ## Deployment
 
@@ -43,12 +43,21 @@ gcloud run deploy calolean --source . --region asia-south1 \
 See `NEXT_STEPS.md` for the full launch runbook (domain mapping, Secret
 Manager, database seeding).
 
+## Building the food + exercise database
+
+The Cloud SQL reference data (foods, exercises) is built from free public
+dumps via a CSV pipeline — see `scripts/dataprep/README.md` and **Step 3** of
+`NEXT_STEPS.md`:
+
+1. `python scripts/dataprep/{exercises,usda,off}_to_csv.py` → produces CSVs
+2. `db/load/staging.sql` → create staging tables
+3. `gcloud sql import csv` (or psql `\copy`) → load CSVs into staging
+4. `db/load/transform.sql` then `db/migrations/004_form_reference.sql` → populate `foods` + `exercises`
+
 ## Useful scripts
 
 | Script | Purpose |
 |---|---|
-| `node scripts/seed_exercises_cloudsql.mjs` | Seed the Cloud SQL `exercises` table (run `db/migrations/*.sql` first) |
-| `node scripts/seed_foods_usda.mjs` | Build the Calolean food database in Cloud SQL from the USDA FoodData Central bulk dump |
 | `firebase deploy --only firestore:rules,firestore:indexes` | Deploy Firestore security rules + indexes |
 
 ## Quality gates

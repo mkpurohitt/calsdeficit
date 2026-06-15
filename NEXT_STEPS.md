@@ -5,7 +5,7 @@
 
 **Architecture decisions baked into this revision:**
 - Hosting is **Google Cloud Run** (Docker image, included `Dockerfile`) — everything lives in one Google Cloud project. No Vercel.
-- There is **no live USDA API**. The Calolean food database is built once from the USDA FoodData Central bulk download into Cloud SQL (`scripts/seed_foods_usda.mjs`); food verification hits our own database first and Open Food Facts only as a last resort.
+- There is **no live USDA API**. The Calolean food database is built from the USDA FoodData Central + Open Food Facts data dumps into Cloud SQL (prepare CSVs with `scripts/dataprep/*.py`, load via `db/load/*.sql`); food verification hits our own database first and falls back to live Open Food Facts only as a last resort.
 
 **How to use this document:** work top-to-bottom. Steps are ordered so that the slowest approvals (AdSense ~2–4 weeks, Google Health OAuth verification ~weeks) are kicked off as early as possible. Each step says exactly which `.env` variable it produces — keep a local `.env.local` as the master copy; production values go into Cloud Run (Step 4).
 
@@ -100,19 +100,22 @@ Firebase projects ARE Google Cloud projects — reuse the same `calolean` projec
 
 ## Step 3 — Cloud SQL + build the Calolean food & exercise database
 
-One small PostgreSQL instance holds: the **Calolean food database** (built from the USDA FoodData Central bulk download — this replaces any live USDA API), the 800+ exercise catalog, the shared nutrition cache, and form-check reference angles. User personal data stays in Firestore.
+One PostgreSQL instance holds: the **Calolean food database** (built from the USDA FoodData Central + Open Food Facts data dumps — this replaces any live USDA API), the exercise catalog (from free-exercise-db), the shared nutrition cache, and form-check reference angles. User personal data stays in Firestore.
 
-**Cost:** your main fixed cost — smallest instance (`db-f1-micro`) ≈ **₹1,500–2,500/month**. You can stop the instance anytime to pause billing.
+The data pipeline is: **`scripts/dataprep/*.py` → CSVs → Cloud SQL staging tables → `db/load/transform.sql`.** You prepare and eyeball the CSVs locally first (you've already done this), then load them.
+
+> ⚠️ **Instance sizing.** If you load the *full* USDA Branded + Open Food Facts sets (millions of rows + a trigram index), the smallest `db-f1-micro` will be slow and may run out of memory building the index. For the full datasets, pick at least a **2 vCPU / 8 GB** instance (~₹6,000–9,000/mo) for the load, then you can scale it down afterward. If you stick to the **generic whole-foods** sets (USDA Foundation + SR Legacy + Survey ≈ 20–30k foods), `db-f1-micro` (~₹1,500–2,500/mo) is fine. Decide based on whether you need branded/packaged products.
 
 1. ☐ https://console.cloud.google.com/sql → **Create instance** → **PostgreSQL**:
    - Instance ID `calolean-db`; set + **save** a strong postgres password
-   - Version **PostgreSQL 16**; Edition **Enterprise** → preset **Sandbox/Shared core (db-f1-micro)**; region `asia-south1`; single zone
-   - Connections: Public IP is fine (the app and scripts connect through the Cloud SQL connector with IAM, not IP allowlists)
+   - Version **PostgreSQL 16**; region `asia-south1`; single zone
+   - Tier: `db-f1-micro` for generic foods only, **or** a 2 vCPU / 8 GB tier if loading the full branded/OFF sets (see the warning above)
+   - Connections: Public IP is fine (the app connects through the Cloud SQL connector with IAM)
    - Create (~10 min).
 2. ☐ Copy the **Connection name** (`calolean:asia-south1:calolean-db`) → `CLOUD_SQL_CONNECTION_NAME`.
-3. ☐ **Databases** tab → Create database `calolean` → `CLOUD_SQL_DB=calolean`.
+3. ☐ **Databases** tab → Create database `calolean` (keep the default **UTF8** encoding — required for the exercise instructions) → `CLOUD_SQL_DB=calolean`.
 4. ☐ **Users** tab → Add user `calolean_app` + strong password → `CLOUD_SQL_USER`, `CLOUD_SQL_PASSWORD`.
-5. ☐ **Run the migrations** — open Cloud Shell (`>_` icon, top right):
+5. ☐ **Create the schema + staging tables** — open Cloud Shell (`>_` icon, top right):
    ```bash
    git clone https://github.com/mkpurohitt/calsdeficit.git && cd calsdeficit
    gcloud sql connect calolean-db --user=calolean_app --database=calolean
@@ -120,28 +123,49 @@ One small PostgreSQL instance holds: the **Calolean food database** (built from 
    \i db/migrations/001_exercises.sql
    \i db/migrations/002_foods.sql
    \i db/migrations/003_nutrition_cache.sql
-   \i db/migrations/004_form_reference.sql
+   \i db/load/staging.sql
    \q
    ```
-6. ☐ **Seed the exercise catalog** (~870 exercises). Still in Cloud Shell, in the repo folder:
-   ```bash
-   npm install
-   export CLOUD_SQL_CONNECTION_NAME=... CLOUD_SQL_DB=calolean CLOUD_SQL_USER=calolean_app CLOUD_SQL_PASSWORD=...
-   export GCP_SERVICE_ACCOUNT_B64=...   # from Step 2
-   node scripts/seed_exercises_cloudsql.mjs
+6. ☐ **Prepare the CSVs locally** (you've validated these already). On your machine:
+   ```powershell
+   python scripts/dataprep/exercises_to_csv.py
+   python scripts/dataprep/usda_to_csv.py --dir "C:\path\to\usda_folder"
+   python scripts/dataprep/off_to_csv.py  --file "C:\path\to\en.openfoodfacts.org.products.csv.gz"
    ```
-7. ☐ **Build the Calolean food database from USDA.** Download the bulk CSV dump and seed it (one-time; re-run safely anytime — it upserts):
+   You now have `exercises.csv`, `usda_foods.csv`, `off_foods.csv`.
+7. ☐ **Load the CSVs into the staging tables.** Two ways — use **A** for the big food files, **B** is fine for the small exercises file:
+
+   **A) Recommended for large files — import via a Cloud Storage bucket:**
    ```bash
-   # in Cloud Shell, in the repo folder, env vars still exported:
-   # Get the latest "SR Legacy" CSV link from https://fdc.nal.usda.gov/download-datasets
-   # (SR Legacy = ~7,800 generic foods with per-100 g macros — ideal for matching)
-   curl -LO https://fdc.nal.usda.gov/fdc-datasets/FoodData_Central_sr_legacy_food_csv_2018-04.zip
-   unzip -o FoodData_Central_sr_legacy_food_csv_*.zip -d usda_csv
-   node scripts/seed_foods_usda.mjs --dir usda_csv/$(ls usda_csv)
+   # one-time bucket
+   gcloud storage buckets create gs://calolean-data --location=asia-south1
+   # upload (run from where your CSVs are)
+   gcloud storage cp exercises.csv usda_foods.csv off_foods.csv gs://calolean-data/
+   # grant the Cloud SQL service account read access (the console will name it if this errors)
+   # then import each CSV into its staging table:
+   gcloud sql import csv calolean-db gs://calolean-data/usda_foods.csv --database=calolean --table=stg_foods --quiet
+   gcloud sql import csv calolean-db gs://calolean-data/off_foods.csv  --database=calolean --table=stg_foods --quiet
+   gcloud sql import csv calolean-db gs://calolean-data/exercises.csv  --database=calolean --table=stg_exercises --quiet
    ```
-   Expected output: `Seeded ~7,8xx foods`. Optionally repeat with the **Foundation Foods** CSV dataset from the same page for newer lab-analyzed entries (same command, different `--dir`).
-   ℹ️ Future refreshes: USDA publishes new dumps twice a year — just download the new zip and re-run the script.
-8. ☐ Quick verify in psql (`gcloud sql connect ...`): `SELECT count(*) FROM foods;` → ~7,800+, and `SELECT canonical_name FROM foods WHERE similarity(search_name,'banana') > 0.4 LIMIT 3;` returns banana rows.
+
+   **B) Simpler for small files — psql `\copy` (streams from your machine):**
+   ```bash
+   gcloud sql connect calolean-db --user=calolean_app --database=calolean
+   # in psql, from the folder containing the CSVs:
+   \copy stg_foods FROM 'usda_foods.csv' WITH (FORMAT csv, HEADER true)
+   \copy stg_foods FROM 'off_foods.csv'  WITH (FORMAT csv, HEADER true)
+   \copy stg_exercises FROM 'exercises.csv' WITH (FORMAT csv, HEADER true)
+   ```
+8. ☐ **Transform staging → real tables, then apply form references.** In psql:
+   ```bash
+   gcloud sql connect calolean-db --user=calolean_app --database=calolean
+   \i db/load/transform.sql               # builds foods + exercises, prints row counts
+   \i db/migrations/004_form_reference.sql # adds squat/deadlift/etc. form angles (matches by name)
+   \q
+   ```
+9. ☐ **Verify** in psql: `SELECT count(*) FROM foods;` and `SELECT canonical_name FROM foods WHERE similarity(search_name,'banana') > 0.4 LIMIT 3;` returns banana rows; `SELECT count(*) FROM exercises;` ≈ 870.
+
+ℹ️ **Refreshing later:** re-run the dataprep scripts on new dumps, re-load staging, and re-run `transform.sql` + `004` — it's a full rebuild each time, so it's safe to repeat.
 
 **Produces:** `CLOUD_SQL_CONNECTION_NAME`, `CLOUD_SQL_DB`, `CLOUD_SQL_USER`, `CLOUD_SQL_PASSWORD`, a populated food + exercise database
 

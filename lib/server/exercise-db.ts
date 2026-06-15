@@ -13,8 +13,8 @@ export interface ExerciseRecord {
   form_reference?: Record<string, unknown> | null;
 }
 
-// Open dataset used as a zero-infra fallback until Cloud SQL is seeded
-// (scripts/seed_exercises_cloudsql.mjs bakes the same data into Postgres).
+// Open dataset used as a zero-infra fallback until Cloud SQL is loaded
+// (scripts/dataprep/exercises_to_csv.py + db/load/* bake the catalog into Postgres).
 const DATASET_URL = "https://raw.githubusercontent.com/hasaneyldrm/exercises-dataset/main/data/exercises.json";
 const DATASET_RAW_BASE = "https://raw.githubusercontent.com/hasaneyldrm/exercises-dataset/main/";
 
