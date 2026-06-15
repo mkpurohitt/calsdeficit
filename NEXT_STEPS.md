@@ -104,12 +104,12 @@ One PostgreSQL instance holds: the **Calolean food database** (built from the US
 
 The data pipeline is: **`scripts/dataprep/*.py` → CSVs → Cloud SQL staging tables → `db/load/transform.sql`.** You prepare and eyeball the CSVs locally first (you've already done this), then load them.
 
-> ⚠️ **Instance sizing.** If you load the *full* USDA Branded + Open Food Facts sets (millions of rows + a trigram index), the smallest `db-f1-micro` will be slow and may run out of memory building the index. For the full datasets, pick at least a **2 vCPU / 8 GB** instance (~₹6,000–9,000/mo) for the load, then you can scale it down afterward. If you stick to the **generic whole-foods** sets (USDA Foundation + SR Legacy + Survey ≈ 20–30k foods), `db-f1-micro` (~₹1,500–2,500/mo) is fine. Decide based on whether you need branded/packaged products.
+> ⚠️ **Instance sizing — you're loading the FULL datasets (~5M food rows).** Use a **2 vCPU / 8 GB** instance (`db-custom-2-8192`, ~₹6,000–9,000/mo) for the load and runtime. The load itself is already optimized in this repo: the staging tables are `UNLOGGED` and the trigram index is dropped before the insert and rebuilt in bulk afterward (`db/load/transform.sql` sets `maintenance_work_mem='1GB'` — lower that one line if your instance has < 8 GB). The app's food lookup is GIN-index-accelerated (verified with `EXPLAIN`), so searches stay fast on millions of rows. You can scale the instance down after launch if traffic is low, but keep **≥ 1 vCPU / 4 GB** so the ~2–3 GB trigram index stays cached for fast lookups.
 
 1. ☐ https://console.cloud.google.com/sql → **Create instance** → **PostgreSQL**:
    - Instance ID `calolean-db`; set + **save** a strong postgres password
    - Version **PostgreSQL 16**; region `asia-south1`; single zone
-   - Tier: `db-f1-micro` for generic foods only, **or** a 2 vCPU / 8 GB tier if loading the full branded/OFF sets (see the warning above)
+   - Tier: **`db-custom-2-8192`** (2 vCPU / 8 GB) — needed for the full datasets (see the warning above)
    - Connections: Public IP is fine (the app connects through the Cloud SQL connector with IAM)
    - Create (~10 min).
 2. ☐ Copy the **Connection name** (`calolean:asia-south1:calolean-db`) → `CLOUD_SQL_CONNECTION_NAME`.

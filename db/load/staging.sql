@@ -5,7 +5,9 @@
 --
 -- Run this BEFORE importing/copying data, then run transform.sql AFTER.
 
-CREATE TABLE IF NOT EXISTS stg_foods (
+-- UNLOGGED = no WAL during the bulk import, much faster (staging is
+-- disposable, so crash-safety doesn't matter here).
+CREATE UNLOGGED TABLE IF NOT EXISTS stg_foods (
   source        TEXT,
   external_id   TEXT,
   canonical_name TEXT,
@@ -19,7 +21,7 @@ CREATE TABLE IF NOT EXISTS stg_foods (
   fiber_g       TEXT
 );
 
-CREATE TABLE IF NOT EXISTS stg_exercises (
+CREATE UNLOGGED TABLE IF NOT EXISTS stg_exercises (
   id                TEXT,
   name              TEXT,
   muscle_group      TEXT,

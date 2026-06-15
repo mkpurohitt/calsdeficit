@@ -17,6 +17,8 @@ export interface FoodVerification {
   sourceLabel: string;
 }
 
+// Must stay >= pg_trgm's default similarity_threshold (0.3) so the `%`
+// operator below safely uses the GIN index as an index-accelerated pre-filter.
 const TRIGRAM_THRESHOLD = 0.45;
 
 async function lookupCloudSql(searchName: string): Promise<FoodMacros | null> {
@@ -30,9 +32,14 @@ async function lookupCloudSql(searchName: string): Promise<FoodMacros | null> {
       fat_g: string;
       fiber_g: string;
     }>(
+      // `search_name % $1` is index-accelerated by the GIN trigram index
+      // (uses pg_trgm's 0.3 threshold); the similarity() filter then enforces
+      // our stricter 0.45 cutoff on the small candidate set. Without `%` this
+      // would seq-scan the multi-million-row table on every lookup.
       `SELECT canonical_name, calories_kcal, protein_g, carbs_g, fat_g, fiber_g
        FROM foods
-       WHERE similarity(search_name, $1) >= $2
+       WHERE search_name % $1
+         AND similarity(search_name, $1) >= $2
        ORDER BY similarity(search_name, $1) DESC
        LIMIT 1`,
       [searchName, TRIGRAM_THRESHOLD]

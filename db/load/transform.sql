@@ -7,7 +7,17 @@
 -- form-check reference angles (it matches exercises by name).
 
 \set ON_ERROR_STOP on
+
+-- More memory for the trigram index rebuild below = much faster on millions of
+-- rows. Lower this if your instance has < 8 GB RAM (e.g. '256MB').
+SET maintenance_work_mem = '1GB';
+
 BEGIN;
+
+-- Drop the heavy foods indexes so the multi-million-row INSERT is fast; they're
+-- rebuilt in bulk after the load (far cheaper than maintaining them per row).
+DROP INDEX IF EXISTS foods_search_trgm;
+DROP INDEX IF EXISTS foods_barcode;
 
 -- ---- FOODS -----------------------------------------------------------------
 TRUNCATE foods;
@@ -56,6 +66,10 @@ FROM (
 ) s;
 
 COMMIT;
+
+-- Rebuild the foods indexes in bulk now that the data is loaded.
+CREATE INDEX foods_search_trgm ON foods USING gin (search_name gin_trgm_ops);
+CREATE INDEX foods_barcode ON foods (barcode);
 
 ANALYZE foods;
 ANALYZE exercises;
