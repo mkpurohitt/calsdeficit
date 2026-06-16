@@ -177,41 +177,23 @@ The repo includes a production `Dockerfile` (Next.js standalone). Cloud Run buil
 
 **Cost:** pay-per-use; with `--min-instances 1` (recommended so the first user of the day doesn't wait for a cold start) ≈ ₹500–1,500/month.
 
-1. ☐ **Put the secrets in Secret Manager** (server-side values; from your machine or Cloud Shell):
-   ```bash
-   printf '%s' "$FIREBASE_SERVICE_ACCOUNT_B64" | gcloud secrets create FIREBASE_SERVICE_ACCOUNT_B64 --data-file=-
-   printf '%s' "$GCP_SERVICE_ACCOUNT_B64"      | gcloud secrets create GCP_SERVICE_ACCOUNT_B64 --data-file=-
-   printf '%s' "$CLOUD_SQL_PASSWORD"           | gcloud secrets create CLOUD_SQL_PASSWORD --data-file=-
-   # later, when you have them (Steps 7): GOOGLE_HEALTH_CLIENT_SECRET, TOKEN_ENCRYPTION_KEY
-   ```
-2. ☐ **Build the image.** `NEXT_PUBLIC_*` values are baked into the browser bundle at build time, so they're passed as Docker build args (Cloud Shell has Docker preinstalled). From the repo root:
-   ```bash
-   REGION=asia-south1
-   IMAGE=$REGION-docker.pkg.dev/$GCP_PROJECT_ID/calolean/web:latest
-   gcloud artifacts repositories create calolean --repository-format=docker --location=$REGION  # first time only
-   gcloud auth configure-docker $REGION-docker.pkg.dev
+**Simple path — one script does build + secrets + deploy.** `scripts/deploy/cloud-run.sh` reads every value from your `.env.local`, builds the image (baking in the `NEXT_PUBLIC_*` values), uploads the server secrets to Secret Manager, grants the runtime service account access to them, and deploys. Re-run it any time you change a value.
 
-   docker build -t $IMAGE \
-     --build-arg NEXT_PUBLIC_FIREBASE_API_KEY=... \
-     --build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=... \
-     --build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID=... \
-     --build-arg NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=... \
-     --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=... \
-     --build-arg NEXT_PUBLIC_FIREBASE_APP_ID=... \
-     --build-arg NEXT_PUBLIC_APP_URL=https://calolean.com .
-     # add the GA / AdSense / affiliate build args as you obtain them (Steps 5, 6, 8)
-   docker push $IMAGE
-   ```
-3. ☐ **Deploy** the image with the runtime env vars and secrets:
+1. ☐ **Fill `.env.local`** with your real values (the same file the app uses locally). In Cloud Shell, after cloning the repo: `cp .env.example .env.local` then edit it (`nano .env.local` or the Cloud Shell editor). At minimum you need: `GCP_PROJECT_ID`, the six `NEXT_PUBLIC_FIREBASE_*`, `FIREBASE_SERVICE_ACCOUNT_B64`, `GCP_SERVICE_ACCOUNT_B64`, `CLOUD_SQL_CONNECTION_NAME`, `CLOUD_SQL_USER`, `CLOUD_SQL_PASSWORD`. (GA / AdSense / Amazon / Health values can be added later — the script skips blanks and you just re-run it.)
+2. ☐ **Run the deploy** from the repo root:
    ```bash
-   gcloud run deploy calolean --image $IMAGE --region $REGION --allow-unauthenticated \
-     --min-instances 1 --memory 1Gi \
-     --add-cloudsql-instances $CLOUD_SQL_CONNECTION_NAME \
-     --set-env-vars GCP_PROJECT_ID=$GCP_PROJECT_ID,VERTEX_LOCATION=global,CLOUD_SQL_CONNECTION_NAME=$CLOUD_SQL_CONNECTION_NAME,CLOUD_SQL_DB=calolean,CLOUD_SQL_USER=calolean_app,NEXT_PUBLIC_APP_URL=https://calolean.com \
-     --set-secrets FIREBASE_SERVICE_ACCOUNT_B64=FIREBASE_SERVICE_ACCOUNT_B64:latest,GCP_SERVICE_ACCOUNT_B64=GCP_SERVICE_ACCOUNT_B64:latest,CLOUD_SQL_PASSWORD=CLOUD_SQL_PASSWORD:latest
+   bash scripts/deploy/cloud-run.sh
    ```
-   (Re-run both blocks whenever you change a `NEXT_PUBLIC_*` value; only the deploy command for runtime values.)
-   💡 Easier long-term: once all keys are settled, ask a Claude Code session to add a `cloudbuild.yaml` wiring the build args from Secret Manager so deploys become one command / auto-deploy on push.
+   It prints the live service URL when done. Re-run the same command whenever you change ANY value (the `NEXT_PUBLIC_*` ones need a fresh image, which the script rebuilds).
+
+   <details><summary>What it does under the hood (if you'd rather run it manually)</summary>
+
+   - Enables the needed APIs; creates the `calolean` Artifact Registry repo (first run only).
+   - `docker build` with all `NEXT_PUBLIC_*` as `--build-arg`, then `docker push`.
+   - Creates/updates Secret Manager secrets `FIREBASE_SERVICE_ACCOUNT_B64`, `GCP_SERVICE_ACCOUNT_B64`, `CLOUD_SQL_PASSWORD` (+ `GOOGLE_HEALTH_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY` once set).
+   - Grants the Cloud Run runtime service account `roles/secretmanager.secretAccessor`.
+   - `gcloud run deploy calolean --min-instances 1 --memory 1Gi` with the runtime env vars + mounted secrets. The app reaches Cloud SQL via the Cloud SQL **connector** (using `GCP_SERVICE_ACCOUNT_B64`), so no `--add-cloudsql-instances` is needed — that service account already has `roles/cloudsql.client` from Step 2.
+   </details>
 4. ☐ The deploy prints a service URL like `https://calolean-xxxxx-el.a.run.app` → open it, confirm signup/login works (add this URL to Firebase Authorized domains, Step 1.5).
 5. ☐ **Map the domain:** Cloud Run → calolean service → **Networking / Manage custom domains** → Add mapping → `calolean.com` (and `www.calolean.com`). Google asks you to verify domain ownership via **Search Console** (https://search.google.com/search-console → add `calolean.com` → DNS TXT record at your registrar) — you need Search Console later for SEO and OAuth verification anyway.
 6. ☐ At your domain registrar, replace the waitlist DNS records with the records Cloud Run shows you (A/AAAA records for the apex, CNAME `ghs.googlehosted.com` for www — use exactly what the console displays).
