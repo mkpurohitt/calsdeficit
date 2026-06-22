@@ -24,6 +24,12 @@ ENV_FILE="${ENV_FILE:-.env.local}"
 REGION="${REGION:-asia-south1}"
 SERVICE="${SERVICE:-calolean}"
 REPO="${REPO:-calolean}"
+# Scale-to-zero by default (cheapest — you only pay while a request is in
+# flight). Set MIN_INSTANCES=1 to keep one warm instance (no cold starts, but
+# ~$15/month always-on). Cloud SQL is OPTIONAL: leave the CLOUD_SQL_* vars
+# blank and the app falls back to the free Open Food Facts API + the public
+# exercise dataset — no always-on database to pay for.
+MIN_INSTANCES="${MIN_INSTANCES:-0}"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "ERROR: $ENV_FILE not found. Copy .env.example to $ENV_FILE and fill it in." >&2
@@ -47,10 +53,18 @@ for v in GCP_PROJECT_ID \
          NEXT_PUBLIC_FIREBASE_API_KEY NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN \
          NEXT_PUBLIC_FIREBASE_PROJECT_ID NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET \
          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID NEXT_PUBLIC_FIREBASE_APP_ID \
-         FIREBASE_SERVICE_ACCOUNT_B64 GCP_SERVICE_ACCOUNT_B64 \
-         CLOUD_SQL_CONNECTION_NAME CLOUD_SQL_USER CLOUD_SQL_PASSWORD; do
+         FIREBASE_SERVICE_ACCOUNT_B64 GCP_SERVICE_ACCOUNT_B64; do
   require "$v"
 done
+
+# Cloud SQL is all-or-nothing: if you set the connection name, the user and
+# password must come with it. If none are set, the app runs without a database.
+USE_CLOUD_SQL=0
+if [[ -n "${CLOUD_SQL_CONNECTION_NAME:-}" ]]; then
+  require CLOUD_SQL_USER
+  require CLOUD_SQL_PASSWORD
+  USE_CLOUD_SQL=1
+fi
 
 APP_URL="${NEXT_PUBLIC_APP_URL:-https://calolean.com}"
 DB_NAME="${CLOUD_SQL_DB:-calolean}"
@@ -106,9 +120,9 @@ put_secret() {
 echo "==> Writing server-side secrets to Secret Manager…"
 put_secret FIREBASE_SERVICE_ACCOUNT_B64 "$FIREBASE_SERVICE_ACCOUNT_B64"
 put_secret GCP_SERVICE_ACCOUNT_B64      "$GCP_SERVICE_ACCOUNT_B64"
-put_secret CLOUD_SQL_PASSWORD           "$CLOUD_SQL_PASSWORD"
 put_secret GOOGLE_HEALTH_CLIENT_SECRET  "${GOOGLE_HEALTH_CLIENT_SECRET:-}"
 put_secret TOKEN_ENCRYPTION_KEY         "${TOKEN_ENCRYPTION_KEY:-}"
+[[ "$USE_CLOUD_SQL" == 1 ]] && put_secret CLOUD_SQL_PASSWORD "$CLOUD_SQL_PASSWORD"
 
 # The Cloud Run runtime service account (default Compute SA) must be allowed to
 # read those secrets at startup.
@@ -122,10 +136,12 @@ gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
 # Plain (non-secret) runtime env vars.
 ENV_VARS="GCP_PROJECT_ID=$GCP_PROJECT_ID"
 ENV_VARS="$ENV_VARS,VERTEX_LOCATION=${VERTEX_LOCATION:-global}"
-ENV_VARS="$ENV_VARS,CLOUD_SQL_CONNECTION_NAME=$CLOUD_SQL_CONNECTION_NAME"
-ENV_VARS="$ENV_VARS,CLOUD_SQL_DB=$DB_NAME"
-ENV_VARS="$ENV_VARS,CLOUD_SQL_USER=$CLOUD_SQL_USER"
 ENV_VARS="$ENV_VARS,NEXT_PUBLIC_APP_URL=$APP_URL"
+if [[ "$USE_CLOUD_SQL" == 1 ]]; then
+  ENV_VARS="$ENV_VARS,CLOUD_SQL_CONNECTION_NAME=$CLOUD_SQL_CONNECTION_NAME"
+  ENV_VARS="$ENV_VARS,CLOUD_SQL_DB=$DB_NAME"
+  ENV_VARS="$ENV_VARS,CLOUD_SQL_USER=$CLOUD_SQL_USER"
+fi
 [[ -n "${GEMINI_CHAT_MODEL:-}" ]]   && ENV_VARS="$ENV_VARS,GEMINI_CHAT_MODEL=$GEMINI_CHAT_MODEL"
 [[ -n "${GEMINI_VISION_MODEL:-}" ]] && ENV_VARS="$ENV_VARS,GEMINI_VISION_MODEL=$GEMINI_VISION_MODEL"
 [[ -n "${GOOGLE_HEALTH_CLIENT_ID:-}" ]]    && ENV_VARS="$ENV_VARS,GOOGLE_HEALTH_CLIENT_ID=$GOOGLE_HEALTH_CLIENT_ID"
@@ -134,16 +150,20 @@ ENV_VARS="$ENV_VARS,NEXT_PUBLIC_APP_URL=$APP_URL"
 # Secrets to mount as env vars (only those that exist).
 SECRETS="FIREBASE_SERVICE_ACCOUNT_B64=FIREBASE_SERVICE_ACCOUNT_B64:latest"
 SECRETS="$SECRETS,GCP_SERVICE_ACCOUNT_B64=GCP_SERVICE_ACCOUNT_B64:latest"
-SECRETS="$SECRETS,CLOUD_SQL_PASSWORD=CLOUD_SQL_PASSWORD:latest"
+[[ "$USE_CLOUD_SQL" == 1 ]]                  && SECRETS="$SECRETS,CLOUD_SQL_PASSWORD=CLOUD_SQL_PASSWORD:latest"
 [[ -n "${GOOGLE_HEALTH_CLIENT_SECRET:-}" ]] && SECRETS="$SECRETS,GOOGLE_HEALTH_CLIENT_SECRET=GOOGLE_HEALTH_CLIENT_SECRET:latest"
 [[ -n "${TOKEN_ENCRYPTION_KEY:-}" ]]        && SECRETS="$SECRETS,TOKEN_ENCRYPTION_KEY=TOKEN_ENCRYPTION_KEY:latest"
 
-echo "==> Deploying to Cloud Run (the app reaches Cloud SQL via the connector)…"
+if [[ "$USE_CLOUD_SQL" == 1 ]]; then
+  echo "==> Deploying to Cloud Run (with Cloud SQL via the connector, min-instances=$MIN_INSTANCES)…"
+else
+  echo "==> Deploying to Cloud Run (no Cloud SQL — free food/exercise fallbacks, min-instances=$MIN_INSTANCES)…"
+fi
 gcloud run deploy "$SERVICE" \
   --image "$IMAGE" \
   --region "$REGION" \
   --allow-unauthenticated \
-  --min-instances 1 \
+  --min-instances "$MIN_INSTANCES" \
   --memory 1Gi \
   --set-env-vars "$ENV_VARS" \
   --set-secrets "$SECRETS"
