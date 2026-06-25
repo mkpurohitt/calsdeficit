@@ -364,14 +364,16 @@ export default function ExercisePage() {
             <div className="cl-card" style={{ borderRadius: 18, padding: 20 }}>
               <div className="flex items-center justify-between mb-3">
                 <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>Muscle Library</h3>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-tertiary)" }}>1,300+</span>
+                {exercises.length > 0 && (
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-tertiary)" }}>{exercises.length} shown</span>
+                )}
               </div>
 
               <div style={{ position: "relative", marginBottom: 12 }}>
                 <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-tertiary)" }} />
                 <input
                   type="text"
-                  placeholder="Search 1,300+ exercises..."
+                  placeholder="Search exercises..."
                   value={searchQuery}
                   onChange={(event) => handleSearchChange(event.target.value)}
                   className="cl-input"

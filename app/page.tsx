@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, ChangeEvent, KeyboardEvent } from "react";
+import { useState, useEffect, useCallback, useRef, ChangeEvent, KeyboardEvent } from "react";
 import { useAuth } from "../lib/AuthContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -12,6 +12,17 @@ import FoodScanCard from "../components/FoodScanCard";
 import { apiFetch } from "../lib/api-client";
 import { compressImage, fileToBase64 } from "../lib/image-compress";
 import type { FoodScanResult } from "../lib/schemas/food-scan";
+import { getFoodLogs, getUserGoal, getDay, getDateKey } from "../lib/user-data";
+import { STEP_GOAL } from "../lib/config/app";
+
+interface DailyStats {
+  consumed: number;
+  calorieGoal: number;
+  protein: number;
+  proteinGoal: number;
+  steps: number;
+  hasGoal: boolean;
+}
 
 interface Message {
   role: 'user' | 'ai';
@@ -48,9 +59,41 @@ export default function Dashboard() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const [stats, setStats] = useState<DailyStats | null>(null);
+
   useEffect(() => {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
+
+  // Live "today" snapshot for the right rail — real logged data, no placeholders.
+  const loadStats = useCallback(async () => {
+    if (!user?.uid) return;
+    try {
+      const todayKey = getDateKey();
+      const [logs, goal, day] = await Promise.all([
+        getFoodLogs(user.uid, { from: todayKey, to: todayKey }),
+        getUserGoal(user.uid),
+        getDay(user.uid, todayKey),
+      ]);
+      const consumed = logs.reduce((a, l) => a + (l.calories || 0), 0);
+      const protein = logs.reduce((a, l) => a + (l.protein_g || 0), 0);
+      setStats({
+        consumed: Math.round(consumed),
+        calorieGoal: goal?.daily_calories || 0,
+        protein: Math.round(protein),
+        proteinGoal: goal?.protein_g || 0,
+        steps: day?.steps || 0,
+        hasGoal: Boolean(goal?.daily_calories),
+      });
+    } catch (error) {
+      console.error("[home] stats load failed", error);
+      setStats({ consumed: 0, calorieGoal: 0, protein: 0, proteinGoal: 0, steps: 0, hasGoal: false });
+    }
+  }, [user]);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -611,27 +654,35 @@ export default function Dashboard() {
               />
               <div style={{ position: "relative" }}>
                 <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginBottom: 4 }}>Calories remaining</div>
-                <div className="flex" style={{ alignItems: "baseline", gap: 7, marginBottom: 18 }}>
-                  <span className="cl-mono" style={{ fontSize: 34, fontWeight: 700, color: "var(--lime-400)", lineHeight: 1 }}>1,145</span>
-                  <span style={{ fontSize: 14, color: "var(--text-secondary)" }}>/ 2,150</span>
-                </div>
+                {stats?.hasGoal ? (
+                  <div className="flex" style={{ alignItems: "baseline", gap: 7, marginBottom: 18 }}>
+                    <span className="cl-mono" style={{ fontSize: 34, fontWeight: 700, color: "var(--lime-400)", lineHeight: 1 }}>
+                      {Math.max(0, stats.calorieGoal - stats.consumed).toLocaleString()}
+                    </span>
+                    <span style={{ fontSize: 14, color: "var(--text-secondary)" }}>/ {stats.calorieGoal.toLocaleString()}</span>
+                  </div>
+                ) : (
+                  <Link href="/diet" style={{ display: "inline-block", marginBottom: 18, fontSize: 14, fontWeight: 600, color: "var(--lime-600)" }}>
+                    Set your daily goal →
+                  </Link>
+                )}
                 <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
                   <div>
                     <div className="flex" style={{ justifyContent: "space-between", fontSize: 12, color: "var(--text-secondary)", marginBottom: 5 }}>
                       <span>Protein</span>
-                      <span className="cl-mono">92 / 150g</span>
+                      <span className="cl-mono">{stats ? `${stats.protein}${stats.proteinGoal ? ` / ${stats.proteinGoal}` : ""}g` : "—"}</span>
                     </div>
                     <div style={{ height: 6, background: "var(--surface-elevated)", borderRadius: 99, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: "61%", background: "var(--macro-protein)", borderRadius: 99 }} />
+                      <div style={{ height: "100%", width: `${stats?.proteinGoal ? Math.min(100, Math.round((stats.protein / stats.proteinGoal) * 100)) : 0}%`, background: "var(--macro-protein)", borderRadius: 99, transition: "width .6s ease" }} />
                     </div>
                   </div>
                   <div>
                     <div className="flex" style={{ justifyContent: "space-between", fontSize: 12, color: "var(--text-secondary)", marginBottom: 5 }}>
                       <span>Steps</span>
-                      <span className="cl-mono">6,420 / 8,000</span>
+                      <span className="cl-mono">{(stats?.steps || 0).toLocaleString()} / {STEP_GOAL.toLocaleString()}</span>
                     </div>
                     <div style={{ height: 6, background: "var(--surface-elevated)", borderRadius: 99, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: "80%", background: "var(--info)", borderRadius: 99 }} />
+                      <div style={{ height: "100%", width: `${Math.min(100, Math.round(((stats?.steps || 0) / STEP_GOAL) * 100))}%`, background: "var(--info)", borderRadius: 99, transition: "width .6s ease" }} />
                     </div>
                   </div>
                 </div>

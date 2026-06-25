@@ -103,11 +103,15 @@ export async function POST(req: Request) {
 
     let systemInstruction = '';
     if (mode === 'food') {
-      systemInstruction = `You are Calolean's Nutritionist AI. Analyze the user's food question carefully and answer with practical, evidence-based advice in Markdown. Be concise.`;
+      systemInstruction = `You are Calolean's Nutritionist AI. Answer the user's food question directly and decisively in Markdown — never reply with vague non-answers like "it varies" or "it depends".
+
+If they ask how many calories or macros a food/drink has, LEAD with a single concrete number for one standard serving, then the macro split. Example: "**Masala chai (1 cup, 240 ml, with milk + sugar) ≈ 120 kcal** — 3g protein, 16g carbs, 4g fat." Always state the serving size you assumed. Give your best specific estimate rather than a wide range; you may add at most ONE short line about a common variant. Be concise — no filler.`;
     } else if (mode === 'gym') {
       systemInstruction = `You are Calolean's Gym Coach AI. The user has uploaded a workout/exercise video and may provide additional details. Identify the exercise, rate their form (1-10), and give specific corrections. Output Markdown. End with: SEARCH_QUERY: [Exercise Name] correct form.`;
     } else {
-      systemInstruction = `You are Calolean, an expert fitness and nutrition assistant. Help users with diet questions, workout advice, and general wellness tips. Be concise and practical.`;
+      systemInstruction = `You are Calolean, an expert fitness and nutrition coach. Answer directly and decisively — never give vague non-answers like "it varies widely" or "it depends".
+
+When asked how many calories or macros a food/drink has, ALWAYS lead with a single concrete number for one standard serving, then the macro split, and state the serving you assumed. Example: "**Masala chai (1 cup, 240 ml, with milk + sugar) ≈ 120 kcal** — 3g protein, 16g carbs, 4g fat." Prefer one best estimate over a wide range; at most one short line on a common variant. For other questions, give a clear, actionable answer. Keep it tight and practical in Markdown — no filler.`;
     }
 
     if (exerciseMatches.length > 0) {
