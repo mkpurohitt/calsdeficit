@@ -92,35 +92,37 @@
   --font-display: var(--font-space-grotesk, 'Space Grotesk'), var(--font-sans);
   --font-mono: var(--font-jetbrains-mono, 'JetBrains Mono'), 'Fira Code', monospace;
 
-  /* ── Semantic Mapping — Light Mode (default with class-based dark) ── */
-  --bg-app:          var(--light-100);
-  --bg-sidebar:      var(--light-200);
-  --surface-card:    var(--light-50);
-  --surface-elevated: var(--light-200);
-  --surface-hover:   var(--light-300);
-  --input-bg:        var(--light-300);
-  --border-color:    var(--light-400);
-  --border-subtle:   var(--light-300);
-  --text-primary:    var(--text-primary-light);
-  --text-secondary:  var(--text-secondary-light);
-  --text-tertiary:   var(--text-tertiary-light);
-  --shadow-card:     var(--shadow-md);
+  /* ── Semantic Mapping — Light Mode (values from the Calolean design export) ── */
+  --bg-app:          #F6F7FA;
+  --bg-sidebar:      #FFFFFF;
+  --surface-card:    #FFFFFF;
+  --surface-elevated: #F1F3F7;
+  --surface-hover:   #E8ECF2;
+  --input-bg:        #F1F3F7;
+  --border-color:    #E4E8EF;
+  --border-subtle:   #EDF0F4;
+  --text-primary:    #0F1218;
+  --text-secondary:  #54607A;
+  --text-tertiary:   #8A95AC;
+  --ring-track:      #E8ECF2;
+  --shadow-card:     0 1px 2px rgba(16, 18, 24, 0.04), 0 8px 24px rgba(16, 18, 24, 0.05);
 }
 
-/* Dark mode — class-based */
+/* Dark mode — class-based (values from the Calolean design export) */
 .dark {
-  --bg-app:          var(--dark-950);
-  --bg-sidebar:      var(--dark-900);
-  --surface-card:    var(--dark-800);
-  --surface-elevated: var(--dark-700);
-  --surface-hover:   var(--dark-600);
-  --input-bg:        var(--dark-600);
-  --border-color:    var(--dark-500);
-  --border-subtle:   var(--dark-400);
-  --text-primary:    var(--text-primary-dark);
-  --text-secondary:  var(--text-secondary-dark);
-  --text-tertiary:   var(--text-tertiary-dark);
-  --shadow-card:     var(--shadow-card-dark);
+  --bg-app:          #0A0C0F;
+  --bg-sidebar:      #0C0F14;
+  --surface-card:    #13171F;
+  --surface-elevated: #1B212C;
+  --surface-hover:   #232B38;
+  --input-bg:        #1B212C;
+  --border-color:    #262F3D;
+  --border-subtle:   #1E2531;
+  --text-primary:    #F5F7FA;
+  --text-secondary:  #9AA6BC;
+  --text-tertiary:   #646F86;
+  --ring-track:      #1E2531;
+  --shadow-card:     0 4px 24px rgba(0, 0, 0, 0.4);
 }
 
 /* ────────────────────────────────────────────
@@ -426,6 +428,35 @@ body {
 .card-hover:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-lg);
+}
+
+/* Design-export card hover: subtle lift + lime border */
+.cl-card-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.cl-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card);
+  border-color: var(--lime-400);
+}
+
+/* Font helpers matching the design export */
+.cl-disp { font-family: var(--font-display); }
+.cl-mono { font-family: var(--font-mono); }
+
+/* Toggle switch (profile notifications) */
+.cl-switch {
+  width: 42px; height: 24px;
+  border-radius: var(--radius-full);
+  position: relative; cursor: pointer; flex: none;
+  border: none; padding: 0;
+  transition: background 0.2s ease;
+}
+.cl-switch__knob {
+  position: absolute; top: 3px;
+  width: 18px; height: 18px;
+  border-radius: 50%; background: #fff;
+  transition: left 0.2s ease;
 }
 
 /* ────────────────────────────────────────────

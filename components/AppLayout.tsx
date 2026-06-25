@@ -6,6 +6,31 @@ import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useAuth } from "../lib/AuthContext";
 
+/** Calolean brand mark (from the design export). */
+function BrandMark({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 512 512" aria-hidden>
+      <rect width="512" height="512" rx="120" fill="#13171F" />
+      <path
+        d="M340 178c-20-26-52-42-88-42-62 0-110 50-110 120s48 120 110 120c36 0 68-16 88-42"
+        fill="none"
+        stroke="var(--lime-400)"
+        strokeWidth="52"
+        strokeLinecap="round"
+      />
+      <circle cx="356" cy="256" r="30" fill="var(--lime-400)" />
+    </svg>
+  );
+}
+
+const NAV_ITEMS = [
+  { name: "Home", mobileName: "Home", href: "/", icon: MessageSquare },
+  { name: "Diet", mobileName: "Diet", href: "/diet", icon: Utensils },
+  { name: "Exercise", mobileName: "Train", href: "/exercise", icon: Dumbbell },
+  { name: "Shop", mobileName: "Shop", href: "/shop", icon: ShoppingBag },
+  { name: "Profile", mobileName: "You", href: "/profile", icon: User },
+];
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
@@ -14,65 +39,69 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => setMounted(true), []);
 
-  const navItems = [
-    { name: "Home", href: "/", icon: MessageSquare },
-    { name: "Diet", href: "/diet", icon: Utensils },
-    { name: "Exercise", href: "/exercise", icon: Dumbbell },
-    { name: "Shop", href: "/shop", icon: ShoppingBag },
-    { name: "Profile", href: "/profile", icon: User },
-  ];
+  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
   const userInitial = user?.displayName?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || "U";
   const userName = user?.displayName || user?.email?.split("@")[0] || "User";
 
+  const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark");
+
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: "var(--bg-app)", color: "var(--text-primary)" }}>
-      
+    <div className="flex" style={{ minHeight: "100vh", background: "var(--bg-app)", color: "var(--text-primary)" }}>
+
       {/* ── Desktop Sidebar ── */}
-      <nav
-        className="hidden md:flex flex-col fixed left-0 top-0 h-full z-40"
+      <aside
+        className="cl-sidebar"
         style={{
-          width: 240,
+          position: "sticky",
+          top: 0,
+          height: "100vh",
+          width: 252,
+          flex: "none",
           background: "var(--bg-sidebar)",
           borderRight: "1px solid var(--border-color)",
+          display: "flex",
+          flexDirection: "column",
+          padding: "22px 16px",
         }}
       >
-        {/* Logo Area */}
-        <div className="flex items-center px-6" style={{ height: 64 }}>
-          <span className="brand-wordmark" style={{ fontSize: 22 }}>
-            <span style={{ color: "var(--text-primary)" }}>calo</span>
-            <span style={{ color: "var(--lime-400)" }}>lean</span>
+        {/* Logo */}
+        <Link href="/" style={{ display: "flex", alignItems: "center", gap: 11, padding: "6px 10px 26px", textDecoration: "none" }}>
+          <BrandMark size={28} />
+          <span className="brand-wordmark" style={{ fontSize: 21, color: "var(--text-primary)" }}>
+            calo<span style={{ color: "var(--lime-400)" }}>lean</span>
           </span>
-        </div>
+        </Link>
 
-        {/* Nav Items */}
-        <div className="flex-1 px-3 mt-2 space-y-1">
-          {navItems.map((item) => {
-            const isActive = pathname === item.href;
+        {/* Nav */}
+        <nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {NAV_ITEMS.map((item) => {
+            const active = isActive(item.href);
             return (
               <Link
                 key={item.name}
                 href={item.href}
-                className="flex items-center gap-3 relative"
+                className="flex items-center"
                 style={{
-                  height: 48,
-                  padding: "0 16px",
-                  borderRadius: isActive ? "0 var(--radius-md) var(--radius-md) 0" : "var(--radius-md)",
-                  background: isActive ? "rgba(170, 255, 0, 0.08)" : "transparent",
-                  color: isActive ? "var(--lime-400)" : "var(--text-secondary)",
-                  fontWeight: isActive ? 600 : 500,
+                  gap: 13,
+                  padding: "11px 13px",
+                  borderRadius: 11,
+                  fontWeight: 500,
                   fontSize: 15,
-                  borderLeft: isActive ? "3px solid var(--lime-400)" : "3px solid transparent",
+                  textDecoration: "none",
+                  color: active ? "var(--lime-400)" : "var(--text-secondary)",
+                  background: active ? "rgba(170,255,0,0.10)" : "transparent",
+                  boxShadow: active ? "inset 3px 0 0 var(--lime-400)" : "inset 3px 0 0 transparent",
                   transition: "all 0.15s ease",
                 }}
                 onMouseEnter={(e) => {
-                  if (!isActive) {
+                  if (!active) {
                     e.currentTarget.style.background = "var(--surface-elevated)";
                     e.currentTarget.style.color = "var(--text-primary)";
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (!isActive) {
+                  if (!active) {
                     e.currentTarget.style.background = "transparent";
                     e.currentTarget.style.color = "var(--text-secondary)";
                   }
@@ -83,122 +112,143 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
-        </div>
+        </nav>
 
-        {/* Bottom Section — User + Settings */}
-        <div
-          className="flex items-center gap-3 px-4"
-          style={{
-            height: 64,
-            borderTop: "1px solid var(--border-color)",
-          }}
-        >
-          <div
-            className="flex items-center justify-center shrink-0"
+        {/* Bottom user card */}
+        <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
+          <Link
+            href="/profile"
+            className="flex items-center"
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: "var(--radius-full)",
-              background: "var(--lime-400)",
-              color: "#0A0C0F",
-              fontWeight: 700,
-              fontSize: 14,
-              fontFamily: "var(--font-sans)",
+              gap: 11,
+              padding: 9,
+              borderRadius: 12,
+              textDecoration: "none",
+              border: "1px solid var(--border-subtle)",
+              background: "var(--surface-card)",
             }}
           >
-            {userInitial}
-          </div>
-          <span
-            className="flex-1 truncate"
-            style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}
-          >
-            {userName}
-          </span>
-          
-          {/* Theme Toggle */}
-          {mounted && (
-            <button
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              className="btn-icon"
-              style={{ width: 32, height: 32, border: "none", background: "transparent" }}
-              aria-label="Toggle theme"
+            <span
+              className="flex items-center justify-center"
+              style={{
+                flex: "none",
+                width: 34,
+                height: 34,
+                borderRadius: "50%",
+                background: "linear-gradient(135deg, var(--lime-400), #72B800)",
+                fontWeight: 700,
+                color: "#0A0C0F",
+                fontSize: 14,
+              }}
             >
-              {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-            </button>
-          )}
+              {userInitial}
+            </span>
+            <span style={{ minWidth: 0, flex: 1 }}>
+              <span className="truncate" style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
+                {userName}
+              </span>
+              <span style={{ display: "block", fontSize: 11, color: "var(--text-tertiary)" }}>Free plan</span>
+            </span>
+            {mounted && (
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleTheme();
+                }}
+                aria-label="Toggle theme"
+                style={{
+                  flex: "none",
+                  width: 30,
+                  height: 30,
+                  borderRadius: 8,
+                  border: "none",
+                  background: "var(--surface-elevated)",
+                  color: "var(--text-secondary)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+              </button>
+            )}
+          </Link>
         </div>
-      </nav>
+      </aside>
 
-      {/* ── Main Content ── */}
-      <main
-        className="flex-1 overflow-y-auto relative"
-        style={{ marginLeft: 240, paddingBottom: 0 }}
-      >
-        {/* Mobile top bar with theme toggle */}
+      {/* ── Main ── */}
+      <main className="flex-1" style={{ minWidth: 0, height: "100vh", overflowY: "auto" }}>
+        {/* Mobile top bar */}
         <div
-          className="md:hidden flex items-center justify-between px-4 sticky top-0 z-30"
+          className="cl-mobiletop flex items-center justify-between px-4 sticky top-0 z-30"
           style={{
             height: 56,
             background: "var(--bg-sidebar)",
             borderBottom: "1px solid var(--border-color)",
           }}
         >
-          <span className="brand-wordmark" style={{ fontSize: 20 }}>
-            <span style={{ color: "var(--text-primary)" }}>calo</span>
-            <span style={{ color: "var(--lime-400)" }}>lean</span>
+          <span className="flex items-center" style={{ gap: 9 }}>
+            <BrandMark size={24} />
+            <span className="brand-wordmark" style={{ fontSize: 19, color: "var(--text-primary)" }}>
+              calo<span style={{ color: "var(--lime-400)" }}>lean</span>
+            </span>
           </span>
           {mounted && (
-            <button
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              className="btn-icon"
-              style={{ width: 36, height: 36 }}
-              aria-label="Toggle theme"
-            >
+            <button onClick={toggleTheme} className="btn-icon" style={{ width: 36, height: 36 }} aria-label="Toggle theme">
               {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
             </button>
           )}
         </div>
 
-        {/* Hide margin on mobile */}
-        <style>{`
-          @media (max-width: 767px) {
-            main { margin-left: 0 !important; padding-bottom: 80px !important; }
-          }
-        `}</style>
-        
         {children}
       </main>
 
-      {/* ── Mobile Bottom Nav ── */}
+      {/* ── Mobile bottom nav ── */}
       <nav
-        className="md:hidden fixed bottom-0 w-full flex justify-around items-center z-50"
+        className="cl-mobilebar fixed bottom-0 w-full flex justify-around items-center z-50"
         style={{
-          height: 68,
+          height: 66,
           background: "var(--bg-sidebar)",
           borderTop: "1px solid var(--border-color)",
           paddingBottom: "env(safe-area-inset-bottom, 0px)",
         }}
       >
-        {navItems.map((item) => {
-          const isActive = pathname === item.href;
+        {NAV_ITEMS.map((item) => {
+          const active = isActive(item.href);
           return (
             <Link
               key={item.name}
               href={item.href}
-              className="flex flex-col items-center gap-1 py-2 px-3"
+              className="flex flex-col items-center"
               style={{
-                color: isActive ? "var(--lime-400)" : "var(--text-tertiary)",
+                gap: 3,
                 fontSize: 10,
-                fontWeight: isActive ? 600 : 500,
+                fontWeight: active ? 600 : 500,
+                textDecoration: "none",
+                color: active ? "var(--lime-400)" : "var(--text-tertiary)",
                 transition: "color 0.15s ease",
               }}
             >
               <item.icon size={22} />
-              <span>{item.name}</span>
+              <span>{item.mobileName}</span>
             </Link>
           );
         })}
       </nav>
+
+      {/* Responsive rules: hide sidebar on mobile, hide mobile chrome on desktop */}
+      <style>{`
+        .cl-mobiletop { display: none; }
+        .cl-mobilebar { display: none; }
+        @media (max-width: 860px) {
+          .cl-sidebar { display: none !important; }
+          .cl-mobiletop { display: flex !important; }
+          .cl-mobilebar { display: flex !important; }
+          main { padding-bottom: 80px; }
+        }
+      `}</style>
     </div>
   );
 }
