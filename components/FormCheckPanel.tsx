@@ -86,7 +86,7 @@ export default function FormCheckPanel({ onResult }: FormCheckPanelProps) {
         : "Scoring your form…";
 
   return (
-    <div className="cl-card-accent flex flex-col" style={{ borderRadius: 20, padding: 24 }}>
+    <div className="cl-card-accent flex flex-col" style={{ borderRadius: 18, padding: 22 }}>
       <div className="flex justify-between items-start mb-4">
         <div>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 2 }}>

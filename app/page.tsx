@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, ChangeEvent, KeyboardEvent } from "react";
 import { useAuth } from "../lib/AuthContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Send, Camera, Video, Upload, LogOut, PlayCircle, Activity, Loader2 } from "lucide-react";
+import { Send, Camera, Video, Paperclip, Trash2, X, PlayCircle, Activity, Loader2, Bot } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
 import { auth } from "../lib/firebase";
 import AppLayout from "../components/AppLayout";
@@ -31,13 +31,15 @@ interface ExerciseResult {
   gif_url?: string | null;
 }
 
+const INITIAL_MESSAGES: Message[] = [
+  { role: "ai", text: "Hey! Upload a food photo to scan nutrients, or a workout video for form analysis. 📷🏋️" }
+];
+
 export default function Dashboard() {
   const { user, loading } = useAuth() as { user: { uid?: string } | null; loading: boolean };
   const router = useRouter();
 
-  const [messages, setMessages] = useState<Message[]>([
-    { role: "ai", text: "Hey! Upload a food photo to scan nutrients, or a workout video for form analysis. 📷🏋️" }
-  ]);
+  const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
   const [input, setInput] = useState<string>("");
   const [mode, setMode] = useState<'chat' | 'food' | 'gym'>("chat");
   const [file, setFile] = useState<File | null>(null);
@@ -70,6 +72,13 @@ export default function Dashboard() {
   const handleModeSwitch = (newMode: 'food' | 'gym') => {
     setMode((current) => (current === newMode ? 'chat' : newMode));
     setFile(null);
+  };
+
+  const handleReset = () => {
+    setMessages(INITIAL_MESSAGES);
+    setInput("");
+    setFile(null);
+    setMode("chat");
   };
 
   const handleLogout = () => {
@@ -174,6 +183,15 @@ export default function Dashboard() {
     if (e.key === 'Enter') handleSend();
   };
 
+  // Right-rail suggestions. Each click wires to an EXISTING handler
+  // (mode switch or prefilling the input) — no new APIs introduced.
+  const suggestions: { t: string; s: string; go: () => void }[] = [
+    { t: "Scan a meal", s: "Snap a photo, get instant macros", go: () => handleModeSwitch('food') },
+    { t: "Check my form", s: "Upload a clip for AI analysis", go: () => handleModeSwitch('gym') },
+    { t: "Plan my macros", s: "Hit your protein target today", go: () => { setMode('chat'); setInput("Help me plan my macros to hit my protein target today."); } },
+    { t: "What should I eat?", s: "Ideas for a balanced day", go: () => { setMode('chat'); setInput("What should I eat for a balanced, high-protein day?"); } },
+  ];
+
   if (loading) return (
     <div
       className="h-screen flex items-center justify-center"
@@ -186,294 +204,500 @@ export default function Dashboard() {
     </div>
   );
 
-  const modeChips: { key: 'food' | 'gym'; icon: typeof Camera; label: string }[] = [
-    { key: 'food', icon: Camera, label: "Scan Food" },
-    { key: 'gym', icon: Video, label: "Gym Form" },
-  ];
-
   return (
     <AppLayout>
-      <div className="flex flex-col h-full" style={{ minHeight: "calc(100vh - 0px)" }}>
+      <div
+        className="cl-home"
+        style={{ maxWidth: 1380, margin: "0 auto", padding: "30px 38px 48px" }}
+      >
+        <div className="cl-home-grid">
 
-        {/* ── Top Bar ── */}
-        <header
-          className="flex items-center justify-between px-6 shrink-0"
-          style={{
-            height: 60,
-            background: "var(--surface-card)",
-            borderBottom: "1px solid var(--border-color)",
-          }}
-        >
-          <div className="flex items-center gap-2" aria-label="Assistant ready">
-            <span
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "var(--radius-full)",
-                background: "var(--lime-400)",
-                display: "inline-block",
-                boxShadow: "var(--shadow-lime-sm)",
-              }}
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleLogout}
-              className="btn-icon"
-              style={{ width: 36, height: 36 }}
-            >
-              <LogOut size={16} />
-            </button>
-          </div>
-        </header>
-
-        {/* ── Chat Messages ── */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-          {messages.map((msg, idx) => (
+          {/* ════ Chat panel card ════ */}
+          <div
+            className="cl-chat-card"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              height: "calc(100vh - 108px)",
+              background: "var(--surface-card)",
+              border: "1px solid var(--border-color)",
+              borderRadius: 20,
+              boxShadow: "var(--shadow-card)",
+              overflow: "hidden",
+            }}
+          >
+            {/* Header */}
             <div
-              key={idx}
-              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} animate-fade-in-up`}
-              style={{ animationDelay: "0s" }}
+              className="flex items-center"
+              style={{
+                gap: 11,
+                padding: "16px 22px",
+                borderBottom: "1px solid var(--border-subtle)",
+              }}
             >
-              <div className={msg.role === "user" ? "chat-bubble-user" : "chat-bubble-ai"}>
-                {/* File preview */}
-                {msg.file && (
-                    <img
-                      src={msg.file}
-                      alt="upload"
-                      className="mb-2"
-                      style={{ borderRadius: "var(--radius-md)", maxHeight: 160, objectFit: "cover" }}
-                    />
-                )}
-
-                {/* 1. FOOD SCAN CARD (structured pipeline) */}
-                {msg.role === 'ai' && msg.scan ? (
-                  <FoodScanCard
-                    scan={msg.scan}
-                    adKeywords={msg.adKeywords}
-                    adsEnabled={msg.adsEnabled}
-                  />
-
-                // 2. GYM MODE CARD
-                ) : msg.role === 'ai' && msg.text.includes('SEARCH_QUERY:') ? (
-                  (() => {
-                     const parts = msg.text.split('SEARCH_QUERY:');
-                     const advice = parts[0].trim();
-                     const query = parts[1] ? parts[1].trim() : "fitness";
-                     const youtubeUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
-
-                     return (
-                       <div className="space-y-3">
-                         <div className="flex items-center gap-2" style={{ color: "var(--lime-400)", fontWeight: 700, fontSize: 14 }}>
-                           <Activity size={18} /> Form Analysis
-                         </div>
-                         <p className="whitespace-pre-wrap" style={{ fontSize: 14, lineHeight: 1.6, color: "var(--text-primary)" }}>{advice}</p>
-                         <a
-                           href={youtubeUrl}
-                           target="_blank"
-                           rel="noopener noreferrer"
-                           className="flex items-center justify-center gap-2 w-full py-2.5 font-medium"
-                           style={{
-                             background: "#FF0000",
-                             color: "#FFFFFF",
-                             borderRadius: "var(--radius-md)",
-                             fontSize: 14,
-                             transition: "background 0.15s",
-                           }}
-                         >
-                           <PlayCircle size={16} /> Watch Correct Form
-                         </a>
-                         <AdCard keywords={msg.adKeywords} enabled={msg.adsEnabled} />
-                       </div>
-                     );
-                  })()
-
-                // 3. NORMAL TEXT
-                ) : (
-                  <div style={{ fontSize: 14, lineHeight: 1.6 }}>
-                    <ReactMarkdown
-                      components={{
-                        h1: ({...props}) => <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--lime-400)", marginBottom: 8, fontFamily: "var(--font-display)" }} {...props} />,
-                        h2: ({...props}) => <h2 style={{ fontSize: 17, fontWeight: 700, color: "var(--lime-400)", marginBottom: 8, fontFamily: "var(--font-display)" }} {...props} />,
-                        strong: ({...props}) => <span style={{ fontWeight: 700, color: "var(--lime-400)" }} {...props} />,
-                        ul: ({...props}) => <ul style={{ listStyleType: "disc", paddingLeft: 16, marginBottom: 8 }} {...props} />,
-                        li: ({...props}) => <li style={{ marginBottom: 4 }} {...props} />,
-                        p: ({...props}) => <p style={{ marginBottom: 8 }} {...props} />,
-                      }}
-                    >
-                      {msg.text}
-                    </ReactMarkdown>
-                    {msg.exercises && msg.exercises.length > 0 && (
-                      <div className="grid gap-3 mt-3">
-                        {msg.exercises.map((ex) => (
-                          <div
-                            key={ex.id}
-                            className="flex items-center gap-3"
-                            style={{
-                              padding: 10,
-                              borderRadius: "var(--radius-md)",
-                              background: "var(--surface-card)",
-                              border: "1px solid var(--border-subtle)",
-                            }}
-                          >
-                            <div
-                              style={{
-                                width: 72,
-                                height: 72,
-                                borderRadius: "var(--radius-sm)",
-                                background: "var(--surface-elevated)",
-                                overflow: "hidden",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                flexShrink: 0,
-                              }}
-                            >
-                              {ex.gif_url ? (
-                                <img src={ex.gif_url} alt={ex.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" />
-                              ) : (
-                                <Activity size={22} style={{ color: "var(--text-tertiary)" }} />
-                              )}
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <p style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", textTransform: "capitalize" }}>{ex.name}</p>
-                              <p style={{ fontSize: 11, color: "var(--text-tertiary)", textTransform: "capitalize", marginTop: 3 }}>
-                                {ex.muscle_group} {ex.equipment ? `- ${ex.equipment}` : ""}
-                              </p>
-                              <Link
-                                href={`/exercise/${ex.id}`}
-                                style={{
-                                  display: "inline-flex",
-                                  marginTop: 8,
-                                  padding: "6px 10px",
-                                  borderRadius: "var(--radius-sm)",
-                                  background: "var(--lime-400)",
-                                  color: "#0A0C0F",
-                                  fontSize: 12,
-                                  fontWeight: 700,
-                                }}
-                              >
-                                Open exercise
-                              </Link>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {/* Contextual native ad after substantial AI answers */}
-                    {msg.role === 'ai' && idx > 0 && (msg.exercises?.length || msg.text.length > 280) ? (
-                      <AdCard keywords={msg.adKeywords} enabled={msg.adsEnabled} />
-                    ) : null}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-
-          {/* Typing Indicator */}
-          {isProcessing && (
-            <div className="flex justify-start">
-              <div className="typing-indicator" style={{ alignItems: "center", gap: 10 }}>
-                <Loader2 size={16} className="animate-spin" style={{ color: "var(--lime-400)" }} />
-                <span style={{ fontSize: 13, color: "var(--text-secondary)", fontWeight: 600 }}>
-                  {processingLabel}
-                </span>
-              </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* ── Input Area ── */}
-        <div
-          className="shrink-0 px-6 py-4"
-          style={{
-            background: "var(--surface-card)",
-            borderTop: "1px solid var(--border-color)",
-          }}
-        >
-          {/* Mode Chips */}
-          <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
-            {modeChips.map((chip) => (
-              <button
-                key={chip.key}
-                onClick={() => handleModeSwitch(chip.key)}
-                className="flex items-center gap-2 shrink-0"
+              <span
                 style={{
-                  padding: "8px 16px",
-                  borderRadius: "var(--radius-full)",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  background: mode === chip.key ? "var(--lime-400)" : "var(--surface-elevated)",
-                  color: mode === chip.key ? "#0A0C0F" : "var(--text-secondary)",
-                  border: mode === chip.key ? "none" : "1px solid var(--border-color)",
-                  cursor: "pointer",
-                  transition: "all 0.15s ease",
+                  width: 34,
+                  height: 34,
+                  borderRadius: 10,
+                  background: "linear-gradient(135deg, var(--lime-400), #72B800)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#0A0C0F",
+                  flex: "none",
                 }}
               >
-                <chip.icon size={14} /> {chip.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Input Row */}
-          <div className="flex items-center gap-2">
-            <label
-              className="btn-icon shrink-0"
-              style={{ width: 44, height: 44, cursor: "pointer" }}
-            >
-              {mode === 'food' ? <Camera size={18} /> : mode === 'gym' ? <Video size={18} /> : <Camera size={18} />}
-              <input
-                type="file"
-                className="hidden"
-                accept={getFileTypes()}
-                onChange={handleFileChange}
-              />
-            </label>
-
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={file ? `Attached: ${file.name}` : mode === 'chat' ? "Ask health queries..." : `Ask about your ${mode}...`}
-              className="cl-input flex-1"
-              style={{ borderRadius: "var(--radius-md)" }}
-            />
-
-            <button
-              onClick={handleSend}
-              disabled={!input && !file}
-              className="btn-primary shrink-0 flex items-center justify-center"
-              style={{
-                width: 44,
-                height: 44,
-                padding: 0,
-                borderRadius: "var(--radius-md)",
-                opacity: !input && !file ? 0.4 : 1,
-                cursor: !input && !file ? "not-allowed" : "pointer",
-              }}
-            >
-              <Send size={18} />
-            </button>
-          </div>
-
-          {/* File indicator */}
-          {file && (
-            <div className="flex items-center gap-2 mt-2" style={{ fontSize: 12, color: "var(--lime-400)" }}>
-              <Upload size={12} />
-              <span className="truncate">{file.name}</span>
+                <Bot size={18} />
+              </span>
+              <div style={{ flex: 1 }}>
+                <div className="cl-disp" style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)" }}>
+                  CalAI
+                </div>
+                <div className="flex items-center" style={{ gap: 6, fontSize: 12, color: "var(--text-tertiary)" }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--lime-400)", boxShadow: "var(--shadow-lime-sm)" }} />
+                  Online · powered by your data
+                </div>
+              </div>
               <button
-                onClick={() => setFile(null)}
-                style={{ color: "var(--text-tertiary)", background: "none", border: "none", cursor: "pointer", fontSize: 12 }}
+                onClick={handleReset}
+                className="btn-icon"
+                aria-label="Reset chat"
+                title="Reset chat"
+                style={{ width: 36, height: 36 }}
               >
-                ✕
+                <Trash2 size={16} />
+              </button>
+              <button
+                onClick={handleLogout}
+                className="btn-icon"
+                aria-label="Log out"
+                title="Log out"
+                style={{ width: 36, height: 36 }}
+              >
+                <X size={16} />
               </button>
             </div>
-          )}
+
+            {/* Messages */}
+            <div
+              className="flex-1 overflow-y-auto"
+              style={{ padding: "24px 22px", display: "flex", flexDirection: "column", gap: 16 }}
+            >
+              {messages.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} animate-fade-in-up`}
+                  style={{ animationDelay: "0s" }}
+                >
+                  <div
+                    className={msg.role === "user" ? "chat-bubble-user" : "chat-bubble-ai"}
+                    style={msg.role === "user" ? undefined : { borderLeft: "2px solid var(--lime-400)" }}
+                  >
+                    {/* File preview */}
+                    {msg.file && (
+                      <img
+                        src={msg.file}
+                        alt="upload"
+                        className="mb-2"
+                        style={{ borderRadius: "var(--radius-md)", maxHeight: 160, objectFit: "cover" }}
+                      />
+                    )}
+
+                    {/* 1. FOOD SCAN CARD (structured pipeline) */}
+                    {msg.role === 'ai' && msg.scan ? (
+                      <FoodScanCard
+                        scan={msg.scan}
+                        adKeywords={msg.adKeywords}
+                        adsEnabled={msg.adsEnabled}
+                      />
+
+                    // 2. GYM MODE CARD
+                    ) : msg.role === 'ai' && msg.text.includes('SEARCH_QUERY:') ? (
+                      (() => {
+                        const parts = msg.text.split('SEARCH_QUERY:');
+                        const advice = parts[0].trim();
+                        const query = parts[1] ? parts[1].trim() : "fitness";
+                        const youtubeUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+
+                        return (
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2" style={{ color: "var(--lime-400)", fontWeight: 700, fontSize: 14 }}>
+                              <Activity size={18} /> Form Analysis
+                            </div>
+                            <p className="whitespace-pre-wrap" style={{ fontSize: 14, lineHeight: 1.6, color: "var(--text-primary)" }}>{advice}</p>
+                            <a
+                              href={youtubeUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center justify-center gap-2 w-full py-2.5 font-medium"
+                              style={{
+                                background: "#FF0000",
+                                color: "#FFFFFF",
+                                borderRadius: "var(--radius-md)",
+                                fontSize: 14,
+                                transition: "background 0.15s",
+                              }}
+                            >
+                              <PlayCircle size={16} /> Watch Correct Form
+                            </a>
+                            <AdCard keywords={msg.adKeywords} enabled={msg.adsEnabled} />
+                          </div>
+                        );
+                      })()
+
+                    // 3. NORMAL TEXT
+                    ) : (
+                      <div style={{ fontSize: 14, lineHeight: 1.6 }}>
+                        <ReactMarkdown
+                          components={{
+                            h1: ({...props}) => <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--lime-400)", marginBottom: 8, fontFamily: "var(--font-display)" }} {...props} />,
+                            h2: ({...props}) => <h2 style={{ fontSize: 17, fontWeight: 700, color: "var(--lime-400)", marginBottom: 8, fontFamily: "var(--font-display)" }} {...props} />,
+                            strong: ({...props}) => <span style={{ fontWeight: 700, color: "var(--lime-400)" }} {...props} />,
+                            ul: ({...props}) => <ul style={{ listStyleType: "disc", paddingLeft: 16, marginBottom: 8 }} {...props} />,
+                            li: ({...props}) => <li style={{ marginBottom: 4 }} {...props} />,
+                            p: ({...props}) => <p style={{ marginBottom: 8 }} {...props} />,
+                          }}
+                        >
+                          {msg.text}
+                        </ReactMarkdown>
+                        {msg.exercises && msg.exercises.length > 0 && (
+                          <div className="grid gap-3 mt-3">
+                            {msg.exercises.map((ex) => (
+                              <div
+                                key={ex.id}
+                                className="flex items-center gap-3"
+                                style={{
+                                  padding: 10,
+                                  borderRadius: "var(--radius-md)",
+                                  background: "var(--surface-card)",
+                                  border: "1px solid var(--border-subtle)",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    width: 72,
+                                    height: 72,
+                                    borderRadius: "var(--radius-sm)",
+                                    background: "var(--surface-elevated)",
+                                    overflow: "hidden",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {ex.gif_url ? (
+                                    <img src={ex.gif_url} alt={ex.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" />
+                                  ) : (
+                                    <Activity size={22} style={{ color: "var(--text-tertiary)" }} />
+                                  )}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <p style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", textTransform: "capitalize" }}>{ex.name}</p>
+                                  <p style={{ fontSize: 11, color: "var(--text-tertiary)", textTransform: "capitalize", marginTop: 3 }}>
+                                    {ex.muscle_group} {ex.equipment ? `- ${ex.equipment}` : ""}
+                                  </p>
+                                  <Link
+                                    href={`/exercise/${ex.id}`}
+                                    style={{
+                                      display: "inline-flex",
+                                      marginTop: 8,
+                                      padding: "6px 10px",
+                                      borderRadius: "var(--radius-sm)",
+                                      background: "var(--lime-400)",
+                                      color: "#0A0C0F",
+                                      fontSize: 12,
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    Open exercise
+                                  </Link>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Contextual native ad after substantial AI answers */}
+                        {msg.role === 'ai' && idx > 0 && (msg.exercises?.length || msg.text.length > 280) ? (
+                          <AdCard keywords={msg.adKeywords} enabled={msg.adsEnabled} />
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {/* Typing Indicator */}
+              {isProcessing && (
+                <div className="flex justify-start">
+                  <div className="typing-indicator" style={{ alignItems: "center", gap: 10 }}>
+                    <Loader2 size={16} className="animate-spin" style={{ color: "var(--lime-400)" }} />
+                    <span style={{ fontSize: 13, color: "var(--text-secondary)", fontWeight: 600 }}>
+                      {processingLabel}
+                    </span>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Composer */}
+            <div style={{ borderTop: "1px solid var(--border-subtle)", padding: "16px 22px" }}>
+              {/* Quick-action chips */}
+              <div className="flex" style={{ gap: 9, marginBottom: 12, flexWrap: "wrap" }}>
+                <button
+                  onClick={() => handleModeSwitch('food')}
+                  className="flex items-center"
+                  style={{
+                    gap: 7,
+                    padding: "8px 14px",
+                    borderRadius: 99,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    background: mode === 'food' ? "var(--lime-400)" : "var(--surface-elevated)",
+                    color: mode === 'food' ? "#0A0C0F" : "var(--text-secondary)",
+                    border: mode === 'food' ? "1px solid var(--lime-400)" : "1px solid var(--border-color)",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <Camera size={15} /> Scan Food
+                </button>
+                <button
+                  onClick={() => handleModeSwitch('gym')}
+                  className="flex items-center"
+                  style={{
+                    gap: 7,
+                    padding: "8px 14px",
+                    borderRadius: 99,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    background: mode === 'gym' ? "var(--lime-400)" : "var(--surface-elevated)",
+                    color: mode === 'gym' ? "#0A0C0F" : "var(--text-secondary)",
+                    border: mode === 'gym' ? "1px solid var(--lime-400)" : "1px solid var(--border-color)",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <Video size={15} /> Gym Form
+                </button>
+              </div>
+
+              {/* Input row */}
+              <div
+                className="flex items-center"
+                style={{
+                  gap: 11,
+                  background: "var(--input-bg)",
+                  border: "1.5px solid var(--border-color)",
+                  borderRadius: 14,
+                  padding: "8px 8px 8px 14px",
+                }}
+              >
+                <label
+                  style={{
+                    flex: "none",
+                    width: 34,
+                    height: 34,
+                    borderRadius: 9,
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--text-tertiary)",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  title="Attach file"
+                >
+                  {mode === 'gym' ? <Video size={19} /> : mode === 'food' ? <Camera size={19} /> : <Paperclip size={19} />}
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept={getFileTypes()}
+                    onChange={handleFileChange}
+                  />
+                </label>
+
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={
+                    file
+                      ? `Attached: ${file.name}`
+                      : mode === 'chat'
+                      ? "Ask anything about your nutrition or training…"
+                      : `Ask about your ${mode}…`
+                  }
+                  style={{
+                    flex: 1,
+                    background: "none",
+                    border: "none",
+                    outline: "none",
+                    color: "var(--text-primary)",
+                    fontSize: 15,
+                    fontFamily: "inherit",
+                    minWidth: 0,
+                  }}
+                />
+
+                <button
+                  onClick={handleSend}
+                  disabled={!input && !file}
+                  style={{
+                    flex: "none",
+                    width: 40,
+                    height: 40,
+                    borderRadius: 11,
+                    border: "none",
+                    background: "var(--lime-400)",
+                    color: "#0A0C0F",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    opacity: !input && !file ? 0.4 : 1,
+                    cursor: !input && !file ? "not-allowed" : "pointer",
+                  }}
+                  aria-label="Send"
+                >
+                  <Send size={18} />
+                </button>
+              </div>
+
+              {/* File indicator */}
+              {file && (
+                <div className="flex items-center gap-2 mt-2" style={{ fontSize: 12, color: "var(--lime-400)" }}>
+                  <Paperclip size={12} />
+                  <span className="truncate">{file.name}</span>
+                  <button
+                    onClick={() => setFile(null)}
+                    style={{ color: "var(--text-tertiary)", background: "none", border: "none", cursor: "pointer", fontSize: 12, display: "inline-flex" }}
+                    aria-label="Remove file"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ════ Right rail ════ */}
+          <aside className="cl-rail" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            {/* Calories remaining (static/derived — no live source on this page) */}
+            <div
+              style={{
+                position: "relative",
+                overflow: "hidden",
+                background: "var(--surface-card)",
+                border: "1px solid var(--border-color)",
+                borderRadius: 18,
+                padding: 22,
+                boxShadow: "var(--shadow-card)",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  right: -30,
+                  top: -30,
+                  width: 180,
+                  height: 180,
+                  background: "radial-gradient(circle, rgba(170,255,0,.14), transparent 65%)",
+                  pointerEvents: "none",
+                }}
+              />
+              <div style={{ position: "relative" }}>
+                <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginBottom: 4 }}>Calories remaining</div>
+                <div className="flex" style={{ alignItems: "baseline", gap: 7, marginBottom: 18 }}>
+                  <span className="cl-mono" style={{ fontSize: 34, fontWeight: 700, color: "var(--lime-400)", lineHeight: 1 }}>1,145</span>
+                  <span style={{ fontSize: 14, color: "var(--text-secondary)" }}>/ 2,150</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+                  <div>
+                    <div className="flex" style={{ justifyContent: "space-between", fontSize: 12, color: "var(--text-secondary)", marginBottom: 5 }}>
+                      <span>Protein</span>
+                      <span className="cl-mono">92 / 150g</span>
+                    </div>
+                    <div style={{ height: 6, background: "var(--surface-elevated)", borderRadius: 99, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: "61%", background: "var(--macro-protein)", borderRadius: 99 }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex" style={{ justifyContent: "space-between", fontSize: 12, color: "var(--text-secondary)", marginBottom: 5 }}>
+                      <span>Steps</span>
+                      <span className="cl-mono">6,420 / 8,000</span>
+                    </div>
+                    <div style={{ height: 6, background: "var(--surface-elevated)", borderRadius: 99, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: "80%", background: "var(--info)", borderRadius: 99 }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Try asking */}
+            <div
+              style={{
+                background: "var(--surface-card)",
+                border: "1px solid var(--border-color)",
+                borderRadius: 18,
+                padding: 22,
+                boxShadow: "var(--shadow-card)",
+              }}
+            >
+              <div className="cl-disp" style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)", marginBottom: 14 }}>
+                Try asking
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                {suggestions.map((sg) => (
+                  <button
+                    key={sg.t}
+                    onClick={sg.go}
+                    className="cl-card-hover"
+                    style={{
+                      textAlign: "left",
+                      padding: "13px 15px",
+                      background: "var(--surface-elevated)",
+                      border: "1px solid var(--border-subtle)",
+                      borderRadius: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{sg.t}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>{sg.s}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </aside>
         </div>
       </div>
+
+      <style jsx>{`
+        .cl-home-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 330px;
+          gap: 20px;
+          align-items: start;
+        }
+        @media (max-width: 860px) {
+          .cl-home {
+            padding: 20px 16px 32px !important;
+          }
+          .cl-home-grid {
+            grid-template-columns: 1fr;
+          }
+          .cl-rail {
+            order: -1;
+          }
+          .cl-chat-card {
+            height: calc(100vh - 140px) !important;
+          }
+        }
+      `}</style>
     </AppLayout>
   );
 }

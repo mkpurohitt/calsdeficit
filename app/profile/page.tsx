@@ -4,21 +4,28 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppLayout from "../../components/AppLayout";
-import UpgradeBadge from "../../components/UpgradeBadge";
 import { useAuth } from "../../lib/AuthContext";
 import { auth } from "../../lib/firebase";
 import { apiFetch } from "../../lib/api-client";
-import { getFoodLogs, getDay, getDateKey, getDateKeyDaysAgo } from "../../lib/user-data";
+import {
+  getFoodLogs,
+  getDay,
+  getDateKey,
+  getDateKeyDaysAgo,
+  getNotificationPreferences,
+  saveNotificationPreferences,
+} from "../../lib/user-data";
 import type { Tier } from "../../lib/entitlements";
 import { deleteUser } from "firebase/auth";
-import { Bell, ChevronRight, CreditCard, Download, ExternalLink, Flame, LogOut, Shield, Trash2, User, Settings } from "lucide-react";
+import { Award, ChevronRight, Download, LogOut, Settings, User, Activity } from "lucide-react";
 
-interface ProfileItem {
-  icon: typeof User;
-  label: string;
-  href: string | null;
-  subtitle?: string;
-}
+type NotifPrefs = { meal_reminders: boolean; workout_reminders: boolean; weekly_summary: boolean };
+
+const NOTIF_ROWS: { key: keyof NotifPrefs; label: string }[] = [
+  { key: "meal_reminders", label: "Daily diary reminder" },
+  { key: "workout_reminders", label: "Workout reminder" },
+  { key: "weekly_summary", label: "Weekly progress report" },
+];
 
 export default function ProfilePage() {
   const { user } = useAuth() as { user: { uid?: string; email?: string | null; displayName?: string | null; metadata?: { creationTime?: string } } | null };
@@ -30,6 +37,7 @@ export default function ProfilePage() {
   const [streak, setStreak] = useState(0);
   const [fitStatus, setFitStatus] = useState("Not connected");
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>({ meal_reminders: true, workout_reminders: true, weekly_summary: false });
 
   const userInitial = user?.displayName?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || "U";
   const userName = user?.displayName || "Fitness Enthusiast";
@@ -37,6 +45,9 @@ export default function ProfilePage() {
   const memberSince = user?.metadata?.creationTime
     ? new Date(user.metadata.creationTime).toLocaleDateString("en-US", { month: "long", year: "numeric" })
     : "Recently";
+
+  const isConnected = fitStatus === "Connected";
+  const usagePct = promptLimit > 0 ? Math.min(100, Math.round((promptsUsed / promptLimit) * 100)) : 0;
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -77,161 +88,270 @@ export default function ProfilePage() {
       } catch (err) {
         console.error("Error fetching limits:", err);
       }
+
+      try {
+        const prefs = await getNotificationPreferences(user.uid!);
+        setNotifPrefs({
+          meal_reminders: prefs.meal_reminders,
+          workout_reminders: prefs.workout_reminders,
+          weekly_summary: prefs.weekly_summary,
+        });
+      } catch (err) {
+        console.error("Error fetching notification preferences:", err);
+      }
     };
 
     loadProfile();
   }, [user]);
 
-  const sections: { title: string; items: ProfileItem[] }[] = [
-    {
-      title: "Personal Goals",
-      items: [
-        { icon: User, label: "Personal Information", href: "/profile/personal-info" },
-        { icon: Settings, label: "Edit TDEE & Macros", href: "/profile/goals" },
-      ],
-    },
-    {
-      title: "Notifications",
-      items: [
-        { icon: Bell, label: "Notification Settings", href: "/profile/notifications" },
-      ],
-    },
-    {
-      title: "Connected Apps",
-      items: [
-        { icon: ExternalLink, label: "Google Health", href: "/profile/google-fit", subtitle: fitStatus },
-      ],
-    },
-    {
-      title: "Account",
-      items: [
-        { icon: Download, label: "Export Data (CSV)", href: "/profile/export" },
-        { icon: Shield, label: "Privacy & Security", href: "/profile/privacy-security" },
-        { icon: CreditCard, label: "Subscription & Billing", href: null },
-      ],
-    },
+  const handleToggleNotif = async (key: keyof NotifPrefs) => {
+    if (!user?.uid) return;
+    const next = { ...notifPrefs, [key]: !notifPrefs[key] };
+    setNotifPrefs(next);
+    try {
+      await saveNotificationPreferences({ user_id: user.uid, ...next });
+    } catch (err) {
+      console.error("Error saving notification preferences:", err);
+    }
+  };
+
+  const handleSignOut = () => {
+    auth.signOut();
+    router.push("/login");
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!auth.currentUser) return;
+    const confirmed = window.confirm(
+      "Delete your Calolean account permanently? Your logs and goals will no longer be accessible."
+    );
+    if (!confirmed) return;
+    setDeleteError(null);
+    try {
+      await deleteUser(auth.currentUser);
+      router.push("/signup");
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code;
+      setDeleteError(
+        code === "auth/requires-recent-login"
+          ? "For security, please log out, log back in, and try deleting again."
+          : "Could not delete the account. Please try again."
+      );
+    }
+  };
+
+  const sectionLabelStyle: React.CSSProperties = {
+    fontSize: 11,
+    letterSpacing: "0.1em",
+    color: "var(--text-tertiary)",
+    marginBottom: 11,
+  };
+
+  const cardStyle: React.CSSProperties = {
+    background: "var(--surface-card)",
+    border: "1px solid var(--border-color)",
+    borderRadius: 16,
+    overflow: "hidden",
+    boxShadow: "var(--shadow-card)",
+  };
+
+  const iconChipStyle: React.CSSProperties = {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    background: "var(--surface-elevated)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "var(--lime-600)",
+    flex: "none",
+  };
+
+  const goalRows: { icon: typeof User; label: string; href: string }[] = [
+    { icon: User, label: "Personal Information", href: "/profile/personal-info" },
+    { icon: Settings, label: "Edit TDEE & Macros", href: "/profile/goals" },
   ];
 
   return (
     <AppLayout>
-      <div className="p-6 lg:p-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
-          <div className="space-y-6">
-            <div className="cl-card-elevated" style={{ borderRadius: 24, padding: 28, textAlign: "center" }}>
-              <div className="mx-auto mb-4" style={{ width: 80, height: 80, borderRadius: "var(--radius-full)", background: "var(--lime-400)", display: "flex", alignItems: "center", justifyContent: "center", color: "#0A0C0F", fontSize: 28, fontWeight: 700, fontFamily: "var(--font-display)" }}>
-                {userInitial}
+      <div style={{ padding: "30px 38px 48px", maxWidth: 1380, margin: "0 auto" }}>
+        <h1 className="cl-disp" style={{ fontSize: 30, fontWeight: 700, margin: "0 0 24px", color: "var(--text-primary)" }}>
+          Profile
+        </h1>
+
+        <div className="profile-grid">
+          {/* LEFT COLUMN */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            {/* Avatar card */}
+            <div style={{ position: "relative", overflow: "hidden", background: "var(--surface-card)", border: "1px solid var(--border-color)", borderRadius: 18, padding: "30px 24px", boxShadow: "var(--shadow-card)", textAlign: "center" }}>
+              <div style={{ position: "absolute", left: "50%", top: -20, transform: "translateX(-50%)", width: 220, height: 160, background: "radial-gradient(circle,rgba(170,255,0,.16),transparent 65%)", pointerEvents: "none" }} />
+              <div style={{ position: "relative" }}>
+                <div className="cl-disp" style={{ width: 88, height: 88, borderRadius: "50%", margin: "0 auto 14px", background: "linear-gradient(135deg,var(--lime-400),var(--lime-600))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36, fontWeight: 700, color: "#0A0C0F" }}>
+                  {userInitial}
+                </div>
+                <div className="cl-disp" style={{ fontSize: 21, fontWeight: 700, color: "var(--text-primary)" }}>{userName}</div>
+                <div style={{ fontSize: 14, color: "var(--text-secondary)", margin: "3px 0 14px" }}>{userEmail}</div>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "7px 15px", borderRadius: "var(--radius-full)", background: "rgba(255,184,0,.12)", color: "var(--warning)", fontSize: 13, fontWeight: 600 }}>
+                  🔥 {streak} day streak
+                </span>
+                <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 12 }}>Member since {memberSince}</div>
               </div>
-              <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>{userName}</h2>
-              <p style={{ fontSize: 14, color: "var(--text-secondary)", marginBottom: 12 }}>{userEmail}</p>
-              <div className="inline-flex items-center gap-2 mx-auto" style={{ padding: "6px 14px", borderRadius: "var(--radius-full)", background: "rgba(255, 184, 0, 0.1)", border: "1px solid rgba(255, 184, 0, 0.2)", color: "var(--warning)", fontSize: 13, fontWeight: 600 }}>
-                <Flame size={14} /> {streak} days
-              </div>
-              <p style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 12 }}>Member since {memberSince}</p>
             </div>
 
-            <UpgradeBadge tier={tier} used={promptsUsed} limit={promptLimit} />
+            {/* Free Plan / usage card */}
+            <div style={{ position: "relative", overflow: "hidden", background: "var(--surface-card)", border: "1px solid rgba(170,255,0,.3)", borderRadius: 18, padding: 24, boxShadow: "0 0 24px rgba(170,255,0,.06)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 18 }}>
+                <Award size={20} style={{ color: "var(--lime-400)" }} />
+                <span style={{ fontWeight: 700, fontSize: 16, color: "var(--text-primary)" }}>
+                  {tier === "premium" ? "Premium Plan" : "Free Plan"}
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--text-secondary)", marginBottom: 7 }}>
+                <span>AI prompts used today</span>
+                <span className="cl-mono">{promptsUsed} / {promptLimit}</span>
+              </div>
+              <div style={{ height: 7, background: "var(--surface-elevated)", borderRadius: "var(--radius-full)", overflow: "hidden", marginBottom: 20 }}>
+                <div style={{ height: "100%", width: `${usagePct}%`, background: "var(--lime-400)", borderRadius: "var(--radius-full)", transition: "width .7s cubic-bezier(.34,1.56,.64,1)" }} />
+              </div>
+              {tier !== "premium" && (
+                <>
+                  <Link
+                    href="/profile/privacy-security"
+                    className="btn-primary"
+                    style={{ width: "100%", padding: 13, fontSize: 14, display: "block", textAlign: "center" }}
+                  >
+                    Upgrade to Premium
+                  </Link>
+                  <div style={{ textAlign: "center", fontSize: 12, color: "var(--text-tertiary)", marginTop: 12 }}>
+                    100 prompts/day · no ads — coming soon
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
-          <div className="lg:col-span-2 space-y-6">
-            {sections.map((section) => (
-              <div key={section.title}>
-                <h3 style={{ fontSize: 13, fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
-                  {section.title}
-                </h3>
-                <div className="cl-card" style={{ borderRadius: "var(--radius-lg)", padding: 0, overflow: "hidden" }}>
-                  {section.items.map((item, index) => {
-                    const content = (
-                      <>
-                        <div className="flex items-center gap-4">
-                          <item.icon size={18} style={{ color: "var(--text-tertiary)" }} />
-                          <div>
-                            <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>{item.label}</span>
-                            {item.subtitle && <p style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 1 }}>{item.subtitle}</p>}
-                          </div>
-                        </div>
-                        <ChevronRight size={16} style={{ color: "var(--text-tertiary)" }} />
-                      </>
-                    );
-
-                    return item.href ? (
-                      <Link
-                        key={item.label}
-                        href={item.href}
-                        className="flex items-center justify-between"
-                        style={{ padding: "14px 20px", borderBottom: index < section.items.length - 1 ? "1px solid var(--border-subtle)" : "none" }}
-                      >
-                        {content}
-                      </Link>
-                    ) : (
-                      <div
-                        key={item.label}
-                        className="flex items-center justify-between"
-                        style={{ padding: "14px 20px", borderBottom: index < section.items.length - 1 ? "1px solid var(--border-subtle)" : "none", opacity: 0.6 }}
-                      >
-                        {content}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-
+          {/* RIGHT COLUMN — settings */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+            {/* PERSONAL GOALS */}
             <div>
-              <h3 style={{ fontSize: 13, fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
-                Legal
-              </h3>
-              <div className="cl-card" style={{ borderRadius: "var(--radius-lg)", padding: "14px 20px" }}>
-                <div className="flex items-center gap-6">
-                  <Link href="/profile/privacy-policy" style={{ fontSize: 13, color: "var(--lime-400)", fontWeight: 500 }}>Privacy Policy</Link>
-                  <Link href="/profile/terms" style={{ fontSize: 13, color: "var(--lime-400)", fontWeight: 500 }}>Terms of Service</Link>
-                  <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>v1.0.0</span>
-                </div>
+              <div className="cl-mono" style={sectionLabelStyle}>PERSONAL GOALS</div>
+              <div style={cardStyle}>
+                {goalRows.map((row, index) => (
+                  <Link
+                    key={row.href}
+                    href={row.href}
+                    className="cl-card-hover"
+                    style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px", borderBottom: index < goalRows.length - 1 ? "1px solid var(--border-subtle)" : "none", cursor: "pointer" }}
+                  >
+                    <span style={iconChipStyle}>
+                      <row.icon size={18} />
+                    </span>
+                    <span style={{ flex: 1, fontSize: 15, fontWeight: 500, color: "var(--text-primary)" }}>{row.label}</span>
+                    <ChevronRight size={18} style={{ color: "var(--text-tertiary)" }} />
+                  </Link>
+                ))}
               </div>
             </div>
 
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  auth.signOut();
-                  router.push("/login");
-                }}
-                className="flex-1 flex items-center justify-center gap-2"
-                style={{ padding: "14px 20px", borderRadius: "var(--radius-lg)", background: "transparent", border: "1px solid rgba(255, 77, 77, 0.3)", color: "var(--error)", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
-              >
-                <LogOut size={18} /> Sign Out
-              </button>
-              <button
-                onClick={async () => {
-                  if (!auth.currentUser) return;
-                  const confirmed = window.confirm(
-                    "Delete your Calolean account permanently? Your logs and goals will no longer be accessible."
-                  );
-                  if (!confirmed) return;
-                  setDeleteError(null);
-                  try {
-                    await deleteUser(auth.currentUser);
-                    router.push("/signup");
-                  } catch (err: unknown) {
-                    const code = (err as { code?: string })?.code;
-                    setDeleteError(
-                      code === "auth/requires-recent-login"
-                        ? "For security, please log out, log back in, and try deleting again."
-                        : "Could not delete the account. Please try again."
-                    );
-                  }
-                }}
-                className="flex items-center justify-center gap-2"
-                style={{ padding: "14px 20px", borderRadius: "var(--radius-lg)", background: "transparent", border: "1px solid var(--border-color)", color: "var(--text-tertiary)", fontSize: 14, fontWeight: 500, cursor: "pointer" }}
-              >
-                <Trash2 size={16} /> Delete Account
-              </button>
+            {/* CONNECTED APPS */}
+            <div>
+              <div className="cl-mono" style={sectionLabelStyle}>CONNECTED APPS</div>
+              <div style={{ ...cardStyle, overflow: "visible", padding: "16px 18px", display: "flex", alignItems: "center", gap: 14 }}>
+                <span style={{ ...iconChipStyle, color: "var(--info)" }}>
+                  <Activity size={18} />
+                </span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 15, fontWeight: 500, color: "var(--text-primary)" }}>Google Health</div>
+                  <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{fitStatus}</div>
+                </div>
+                <Link
+                  href="/profile/google-fit"
+                  style={{ padding: "8px 16px", background: "transparent", border: "1.5px solid var(--lime-400)", color: "var(--lime-600)", fontWeight: 600, fontSize: 13, borderRadius: 9, cursor: "pointer" }}
+                >
+                  {isConnected ? "Manage" : "Connect"}
+                </Link>
+              </div>
             </div>
-            {deleteError && (
-              <p style={{ fontSize: 13, color: "var(--error)", fontWeight: 600 }}>{deleteError}</p>
-            )}
+
+            {/* NOTIFICATIONS */}
+            <div>
+              <div className="cl-mono" style={sectionLabelStyle}>NOTIFICATIONS</div>
+              <div style={cardStyle}>
+                {NOTIF_ROWS.map((row, index) => {
+                  const on = notifPrefs[row.key];
+                  return (
+                    <div
+                      key={row.key}
+                      style={{ display: "flex", alignItems: "center", gap: 14, padding: "15px 18px", borderBottom: index < NOTIF_ROWS.length - 1 ? "1px solid var(--border-subtle)" : "none" }}
+                    >
+                      <span style={{ flex: 1, fontSize: 15, color: "var(--text-primary)" }}>{row.label}</span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={on}
+                        aria-label={row.label}
+                        onClick={() => handleToggleNotif(row.key)}
+                        className="cl-switch"
+                        style={{ background: on ? "var(--lime-400)" : "var(--surface-hover)" }}
+                      >
+                        <span className="cl-switch__knob" style={{ left: on ? 21 : 3 }} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ACCOUNT */}
+            <div>
+              <div className="cl-mono" style={sectionLabelStyle}>ACCOUNT</div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <Link
+                  href="/profile/export"
+                  className="cl-card-hover"
+                  style={{ flex: 1, minWidth: 150, display: "flex", alignItems: "center", justifyContent: "center", gap: 9, padding: 14, background: "var(--surface-card)", border: "1px solid var(--border-color)", borderRadius: 13, color: "var(--text-primary)", fontWeight: 500, fontSize: 14, cursor: "pointer" }}
+                >
+                  <Download size={17} /> Export Data
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  style={{ flex: 1, minWidth: 150, display: "flex", alignItems: "center", justifyContent: "center", gap: 9, padding: 14, background: "transparent", border: "1px solid rgba(255,77,77,.4)", borderRadius: 13, color: "var(--error)", fontWeight: 600, fontSize: 14, cursor: "pointer" }}
+                >
+                  <LogOut size={17} /> Sign Out
+                </button>
+              </div>
+              <div style={{ display: "flex", gap: 18, alignItems: "center", marginTop: 16, padding: "0 4px", flexWrap: "wrap" }}>
+                <Link href="/profile/privacy-policy" style={{ fontSize: 13, fontWeight: 600, color: "var(--lime-600)", cursor: "pointer" }}>Privacy Policy</Link>
+                <Link href="/profile/terms" style={{ fontSize: 13, fontWeight: 600, color: "var(--lime-600)", cursor: "pointer" }}>Terms of Service</Link>
+                <button
+                  type="button"
+                  onClick={handleDeleteAccount}
+                  style={{ fontSize: 13, fontWeight: 600, color: "var(--text-tertiary)", cursor: "pointer", background: "none", border: "none", padding: 0 }}
+                >
+                  Delete Account
+                </button>
+                <span className="cl-mono" style={{ fontSize: 12, color: "var(--text-tertiary)", marginLeft: "auto" }}>v1.0.0</span>
+              </div>
+              {deleteError && (
+                <p style={{ fontSize: 13, color: "var(--error)", fontWeight: 600, marginTop: 12 }}>{deleteError}</p>
+              )}
+            </div>
           </div>
         </div>
       </div>
+
+      <style>{`
+        .profile-grid {
+          display: grid;
+          grid-template-columns: 380px minmax(0, 1fr);
+          gap: 20px;
+          align-items: start;
+        }
+        @media (max-width: 860px) {
+          .profile-grid { grid-template-columns: 1fr; }
+        }
+      `}</style>
     </AppLayout>
   );
 }

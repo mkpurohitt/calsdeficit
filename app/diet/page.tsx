@@ -353,22 +353,41 @@ export default function DietPage() {
   const totalFiber = foodLogs.reduce((sum, log) => sum + (log.fiber_g || 0), 0);
 
   const goal = userGoals?.daily_calories || 2400;
+  const remaining = Math.max(goal - consumed, 0);
   const percent = Math.min(consumed / goal, 1);
   const ringSize = 200;
-  const r = (ringSize / 2) - 16;
+  const r = 84;
   const circumference = 2 * Math.PI * r;
   const dashOffset = circumference * (1 - percent);
+
+  // Eyebrow date (e.g. "WEDNESDAY · JUNE 24")
+  const now = new Date();
+  const eyebrowDate = `${now.toLocaleDateString("en-US", { weekday: "long" })} · ${now.toLocaleDateString("en-US", { month: "long" })} ${now.getDate()}`.toUpperCase();
 
   // Group food logs by meal type
   const getMealItems = (mealName: string): FoodLogEntry[] => {
     return foodLogs.filter(log => log.meal_type === mealName);
   };
 
-  const meals: MealSection[] = [
-    { name: "Breakfast", color: "var(--macro-carbs)", items: getMealItems("Breakfast") },
-    { name: "Lunch", color: "var(--lime-400)", items: getMealItems("Lunch") },
-    { name: "Dinner", color: "var(--macro-fat)", items: getMealItems("Dinner") },
-    { name: "Snacks", color: "var(--info)", items: getMealItems("Snacks") },
+  // Earliest logged time for a meal section, derived from real food-log data.
+  const getMealTime = (items: FoodLogEntry[]): string => {
+    const times = items
+      .map((it) => it.created_at)
+      .filter((t): t is string => !!t)
+      .map((t) => new Date(t).getTime())
+      .filter((t) => !Number.isNaN(t));
+    if (times.length === 0) return "not logged";
+    return new Date(Math.min(...times)).toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
+  const meals: (MealSection & { time: string })[] = [
+    { name: "Breakfast", color: "var(--macro-carbs)", items: getMealItems("Breakfast"), time: getMealTime(getMealItems("Breakfast")) },
+    { name: "Lunch", color: "var(--lime-400)", items: getMealItems("Lunch"), time: getMealTime(getMealItems("Lunch")) },
+    { name: "Dinner", color: "var(--macro-fat)", items: getMealItems("Dinner"), time: getMealTime(getMealItems("Dinner")) },
+    { name: "Snacks", color: "var(--macro-fiber)", items: getMealItems("Snacks"), time: getMealTime(getMealItems("Snacks")) },
   ];
 
   // Dynamic Macros pulling from Database + food logs
@@ -430,202 +449,249 @@ export default function DietPage() {
   }
 
   // ── Diet Dashboard ──
+  const macroChips = [
+    { label: "Protein", value: totalProtein, color: "var(--macro-protein)" },
+    { label: "Carbs", value: totalCarbs, color: "var(--macro-carbs)" },
+    { label: "Fat", value: totalFat, color: "var(--macro-fat)" },
+  ];
+
   return (
     <AppLayout>
-      <div className="p-6 lg:p-8">
+      <div style={{ padding: "30px 38px 48px", maxWidth: 1380, margin: "0 auto" }}>
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-end",
+            gap: 16,
+            marginBottom: 24,
+            flexWrap: "wrap",
+          }}
+        >
           <div>
-            <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 700, color: "var(--text-primary)" }}>
+            <div
+              className="cl-mono"
+              style={{ fontSize: 12, letterSpacing: ".12em", color: "var(--text-tertiary)", marginBottom: 7 }}
+            >
+              {eyebrowDate}
+            </div>
+            <h1
+              style={{ fontFamily: "var(--font-display)", fontSize: 30, fontWeight: 700, margin: 0, color: "var(--text-primary)" }}
+            >
               Today&apos;s Diet
-            </h2>
-            <p style={{ fontSize: 14, color: "var(--text-secondary)", marginTop: 2 }}>
-              {consumed.toLocaleString()} / {goal.toLocaleString()} kcal consumed
-            </p>
+            </h1>
           </div>
           <button
             onClick={() => openScanner()}
-            className="btn-primary flex items-center gap-2"
-            style={{ borderRadius: "var(--radius-full)", padding: "10px 20px", fontSize: 14 }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 9,
+              padding: "12px 20px",
+              background: "var(--lime-400)",
+              color: "#0A0C0F",
+              fontWeight: 700,
+              fontSize: 14,
+              border: "none",
+              borderRadius: 12,
+              cursor: "pointer",
+            }}
           >
-            <Camera size={16} /> Scan Food
+            <Camera size={18} /> Scan Food
           </button>
         </div>
 
-        {/* 3-Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* 2-Column Layout */}
+        <div className="diet-cols">
 
-          {/* ── Left Column: Calorie Ring + Water ── */}
-          <div className="space-y-6">
-            {/* Calorie Ring */}
-            <div className="cl-card" style={{ borderRadius: 20, padding: 28, display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <div style={{ position: "relative", width: ringSize, height: ringSize }}>
-                <svg width={ringSize} height={ringSize} viewBox={`0 0 ${ringSize} ${ringSize}`}>
-                  <circle cx={ringSize/2} cy={ringSize/2} r={r} fill="none" stroke="var(--surface-elevated)" strokeWidth="10" />
-                  <circle
-                    cx={ringSize/2} cy={ringSize/2} r={r}
-                    fill="none" stroke="var(--lime-400)" strokeWidth="10"
-                    strokeLinecap="round"
-                    strokeDasharray={circumference}
-                    strokeDashoffset={dashOffset}
-                    transform={`rotate(-90 ${ringSize/2} ${ringSize/2})`}
-                    style={{ transition: "stroke-dashoffset 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)" }}
-                  />
-                </svg>
-                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 36, fontWeight: 700, color: "var(--lime-400)" }}>
-                    {consumed.toLocaleString()}
-                  </span>
-                  <span style={{ fontSize: 13, color: "var(--text-tertiary)" }}>
-                    of {goal.toLocaleString()} kcal
-                  </span>
-                </div>
-              </div>
+          {/* ── LEFT: Ring hero + scan bar + meal journal ── */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-              {/* Macro pills */}
-              <div className="flex gap-3 mt-5">
-                {[
-                  { label: "P", value: `${totalProtein}g`, color: "var(--macro-protein)" },
-                  { label: "C", value: `${totalCarbs}g`, color: "var(--macro-carbs)" },
-                  { label: "F", value: `${totalFat}g`, color: "var(--macro-fat)" },
-                ].map((m, i) => (
+            {/* Ring hero */}
+            <div
+              className="cl-card"
+              style={{ position: "relative", overflow: "hidden", borderRadius: 20, padding: 28 }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  left: -40,
+                  top: -40,
+                  width: 280,
+                  height: 280,
+                  background: "radial-gradient(circle, rgba(170,255,0,.16), transparent 65%)",
+                  pointerEvents: "none",
+                }}
+              />
+              <div
+                style={{
+                  position: "relative",
+                  display: "flex",
+                  gap: 30,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ position: "relative", width: ringSize, height: ringSize, flex: "none" }}>
+                  <svg width={ringSize} height={ringSize} viewBox={`0 0 ${ringSize} ${ringSize}`}>
+                    <circle cx={ringSize / 2} cy={ringSize / 2} r={r} fill="none" stroke="var(--ring-track)" strokeWidth="15" />
+                    <circle
+                      cx={ringSize / 2}
+                      cy={ringSize / 2}
+                      r={r}
+                      fill="none"
+                      stroke="var(--lime-400)"
+                      strokeWidth="15"
+                      strokeLinecap="round"
+                      strokeDasharray={circumference}
+                      strokeDashoffset={dashOffset}
+                      transform={`rotate(-90 ${ringSize / 2} ${ringSize / 2})`}
+                      style={{ transition: "stroke-dashoffset 0.9s cubic-bezier(0.34, 1.56, 0.64, 1)" }}
+                    />
+                  </svg>
                   <div
-                    key={i}
-                    className="flex items-center gap-2"
                     style={{
-                      padding: "6px 12px",
-                      borderRadius: "var(--radius-full)",
-                      background: "var(--surface-elevated)",
-                      fontSize: 12,
-                      fontWeight: 600,
-                    }}
-                  >
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: m.color }} />
-                    <span style={{ color: "var(--text-secondary)" }}>{m.label}</span>
-                    <span style={{ color: "var(--text-primary)", fontFamily: "var(--font-mono)" }}>{m.value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Water Tracker */}
-            <div className="cl-card" style={{ borderRadius: 20, padding: 24 }}>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div style={{ padding: 10, borderRadius: "var(--radius-full)", background: "rgba(77, 158, 255, 0.15)" }}>
-                    <Droplet size={20} style={{ color: "var(--info)" }} />
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>Water Intake</h3>
-                    <p style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                      <span style={{ fontFamily: "var(--font-mono)" }}>{totalWaterMl.toLocaleString()}</span> / {waterGoal.toLocaleString()} ml
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Glass grid */}
-              <div className="grid grid-cols-4 gap-3 mb-4">
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      width: "100%",
-                      aspectRatio: "1",
-                      borderRadius: "var(--radius-md)",
+                      position: "absolute",
+                      inset: 0,
                       display: "flex",
+                      flexDirection: "column",
                       alignItems: "center",
                       justifyContent: "center",
-                      border: i < waterGlasses ? "none" : "1.5px dashed var(--border-color)",
-                      background: i < waterGlasses ? "rgba(77, 158, 255, 0.15)" : "transparent",
-                      transition: "all 0.2s ease",
                     }}
                   >
-                    <Droplet
-                      size={20}
-                      style={{ color: i < waterGlasses ? "var(--info)" : "var(--text-disabled-dark)" }}
-                      fill={i < waterGlasses ? "var(--info)" : "none"}
-                    />
+                    <span className="cl-mono" style={{ fontSize: 38, fontWeight: 700, color: "var(--text-primary)", lineHeight: 1 }}>
+                      {consumed.toLocaleString()}
+                    </span>
+                    <span style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 5 }}>
+                      of {goal.toLocaleString()} kcal
+                    </span>
                   </div>
-                ))}
+                </div>
+
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginBottom: 2 }}>Remaining today</div>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 20 }}>
+                    <span className="cl-mono" style={{ fontSize: 42, fontWeight: 700, color: "var(--lime-400)", lineHeight: 1 }}>
+                      {remaining.toLocaleString()}
+                    </span>
+                    <span style={{ fontSize: 15, color: "var(--text-secondary)" }}>kcal</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+                    {macroChips.map((m) => (
+                      <div
+                        key={m.label}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 7,
+                          padding: "8px 13px",
+                          background: "var(--surface-elevated)",
+                          borderRadius: 10,
+                        }}
+                      >
+                        <span style={{ width: 9, height: 9, borderRadius: "50%", background: m.color }} />
+                        <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{m.label}</span>
+                        <span className="cl-mono" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>
+                          {m.value}g
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-
-              <button
-                onClick={handleAddWater}
-                className="btn-secondary w-full flex items-center justify-center gap-2"
-                style={{ fontSize: 13, padding: "8px 16px" }}
-              >
-                <Plus size={14} /> Add Water
-              </button>
             </div>
-          </div>
 
-          {/* ── Center Column: Meal Journal ── */}
-          <div className="space-y-3">
-            {/* Quick scan bar */}
+            {/* Scan bar */}
             <div
-              className="cl-card flex items-center gap-3"
-              style={{ padding: "12px 16px", borderRadius: "var(--radius-lg)", cursor: "pointer" }}
+              className="cl-card"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 13,
+                borderRadius: 14,
+                padding: "11px 14px",
+                cursor: "pointer",
+              }}
               onClick={() => openScanner()}
             >
-              <button
+              <span
                 style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: "var(--radius-md)",
+                  flex: "none",
+                  width: 38,
+                  height: 38,
+                  borderRadius: 10,
                   background: "var(--lime-400)",
-                  color: "#0A0C0F",
-                  border: "none",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  cursor: "pointer",
+                  color: "#0A0C0F",
                 }}
               >
-                <Camera size={18} />
-              </button>
-              <span style={{ flex: 1, fontSize: 14, color: "var(--text-tertiary)" }}>
-                Scan food or search...
+                <Camera size={19} />
+              </span>
+              <span style={{ flex: 1, fontSize: 15, color: "var(--text-tertiary)" }}>
+                Scan a photo or search foods…
               </span>
             </div>
 
-            {/* Meal Sections */}
-            {meals.map((meal) => (
-              <div key={meal.name} className="cl-card" style={{ borderRadius: "var(--radius-lg)", padding: 0, overflow: "hidden", borderLeft: `3px solid ${meal.color}` }}>
-                <button
-                  onClick={() => setExpandedMeal(expandedMeal === meal.name ? null : meal.name)}
-                  className="w-full flex items-center justify-between p-4"
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-primary)" }}
-                >
-                  <div className="flex items-center gap-3">
-                    <span style={{ fontSize: 15, fontWeight: 600 }}>{meal.name}</span>
-                    <span style={{ fontSize: 12, color: "var(--text-tertiary)", fontFamily: "var(--font-mono)" }}>
-                      {meal.items.reduce((sum, item) => sum + item.calories, 0)} kcal
-                    </span>
-                  </div>
-                  {expandedMeal === meal.name ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </button>
+            {/* Meal journal */}
+            <div className="cl-card" style={{ borderRadius: 20, padding: "8px 22px" }}>
+              {meals.map((meal, mi) => {
+                const isOpen = expandedMeal === meal.name;
+                const total = meal.items.reduce((sum, item) => sum + item.calories, 0);
+                return (
+                  <div
+                    key={meal.name}
+                    style={{ borderBottom: mi < meals.length - 1 ? "1px solid var(--border-subtle)" : "none" }}
+                  >
+                    <div
+                      onClick={() => setExpandedMeal(isOpen ? null : meal.name)}
+                      style={{ display: "flex", alignItems: "center", gap: 14, padding: "17px 2px", cursor: "pointer" }}
+                    >
+                      <span style={{ width: 4, height: 36, borderRadius: 99, background: meal.color, flex: "none" }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+                          <span style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)" }}>{meal.name}</span>
+                          <span className="cl-mono" style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{meal.time}</span>
+                        </div>
+                      </div>
+                      <span className="cl-mono" style={{ fontSize: 14, fontWeight: 600, color: "var(--text-secondary)" }}>
+                        {total} kcal
+                      </span>
+                      {isOpen ? (
+                        <ChevronUp size={18} style={{ color: "var(--text-tertiary)" }} />
+                      ) : (
+                        <ChevronDown size={18} style={{ color: "var(--text-tertiary)" }} />
+                      )}
+                    </div>
 
-                {expandedMeal === meal.name && (
-                  <div style={{ borderTop: "1px solid var(--border-color)", padding: "0 16px 16px" }}>
-                    {meal.items.length > 0 ? (
-                      meal.items.map((item, idx) => (
-                        <div
-                          key={item.id || idx}
-                          className="flex items-center justify-between py-3"
-                          style={{ borderBottom: idx < meal.items.length - 1 ? "1px solid var(--border-subtle)" : "none" }}
-                        >
-                          <div>
-                            <p style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>{item.food_name}</p>
-                            <p style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{item.portion} · P:{item.protein_g}g C:{item.carbs_g}g F:{item.fat_g}g</p>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span style={{ fontSize: 14, fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--lime-400)" }}>
-                              {item.calories}
+                    {isOpen && (
+                      <div style={{ padding: "0 0 16px 18px", display: "flex", flexDirection: "column", gap: 7 }}>
+                        {meal.items.map((item, idx) => (
+                          <div
+                            key={item.id || idx}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 12,
+                              padding: "11px 14px",
+                              background: "var(--surface-elevated)",
+                              borderRadius: 11,
+                            }}
+                          >
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>{item.food_name}</div>
+                              <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 1 }}>
+                                {item.portion} · P:{item.protein_g}g C:{item.carbs_g}g F:{item.fat_g}g
+                              </div>
+                            </div>
+                            <span className="cl-mono" style={{ fontSize: 13, fontWeight: 600, color: "var(--lime-600)" }}>
+                              {item.calories} kcal
                             </span>
                             {item.id && (
                               <button
-                                onClick={() => handleDeleteLog(item.id!)}
+                                onClick={(e) => { e.stopPropagation(); handleDeleteLog(item.id!); }}
                                 className="btn-icon"
                                 style={{ width: 28, height: 28, border: "none", background: "transparent", cursor: "pointer" }}
                               >
@@ -633,98 +699,223 @@ export default function DietPage() {
                               </button>
                             )}
                           </div>
-                        </div>
-                      ))
-                    ) : (
-                      <p style={{ fontSize: 13, color: "var(--text-tertiary)", padding: "12px 0" }}>No items logged yet</p>
-                    )}
+                        ))}
 
-                    <button
-                      onClick={() => openScanner(meal.name)}
-                      className="w-full flex items-center justify-center gap-2 mt-2"
-                      style={{
-                        padding: "10px",
-                        borderRadius: "var(--radius-md)",
-                        border: "1.5px dashed var(--border-color)",
-                        background: "transparent",
-                        color: "var(--text-tertiary)",
-                        fontSize: 13,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <Plus size={14} /> Add food
-                    </button>
+                        {meal.items.length === 0 && (
+                          <div style={{ fontSize: 13, color: "var(--text-tertiary)", padding: "6px 14px" }}>
+                            Nothing logged yet.
+                          </div>
+                        )}
+
+                        <div
+                          onClick={() => openScanner(meal.name)}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            padding: "10px 14px",
+                            border: "1.5px dashed var(--border-color)",
+                            borderRadius: 11,
+                            color: "var(--text-tertiary)",
+                            fontSize: 13,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <Plus size={16} /> Add food
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            ))}
+                );
+              })}
+            </div>
           </div>
 
-          {/* ── Right Column: Macro Summary ── */}
-          <div className="space-y-6">
+          {/* ── RIGHT RAIL ── */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
             {/* Today's Macros */}
-            <div className="cl-card" style={{ borderRadius: 20, padding: 24 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)", marginBottom: 16 }}>Today&apos;s Macros</h3>
-              {macros.map((macro, i) => (
-                <div key={i} className="macro-bar">
-                  <div className="macro-bar__header">
-                    <span style={{ fontWeight: 500 }}>{macro.label}</span>
-                    <span style={{ fontFamily: "var(--font-mono)" }}>{macro.current}g / {macro.target}g</span>
+            <div className="cl-card" style={{ borderRadius: 18, padding: 22 }}>
+              <div style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)", marginBottom: 18 }}>
+                Today&apos;s Macros
+              </div>
+              {macros.map((macro) => (
+                <div key={macro.label} style={{ marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 7 }}>
+                    <span style={{ color: "var(--text-secondary)" }}>{macro.label}</span>
+                    <span className="cl-mono" style={{ color: "var(--text-tertiary)" }}>{macro.current} / {macro.target}g</span>
                   </div>
-                  <div className="macro-bar__track">
+                  <div style={{ height: 7, background: "var(--surface-elevated)", borderRadius: 99, overflow: "hidden" }}>
                     <div
-                      className="macro-bar__fill"
-                      style={{ width: `${Math.min((macro.current / macro.target) * 100, 100)}%`, background: macro.color }}
+                      style={{
+                        height: "100%",
+                        width: `${Math.min((macro.current / macro.target) * 100, 100)}%`,
+                        background: macro.color,
+                        borderRadius: 99,
+                        transition: "width 0.7s cubic-bezier(0.34, 1.56, 0.64, 1)",
+                      }}
                     />
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Weekly Average */}
-            <div className="cl-card" style={{ borderRadius: 20, padding: 24 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)", marginBottom: 16 }}>Weekly Average</h3>
-              <div className="flex items-end justify-between gap-1" style={{ height: 80 }}>
-                {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((day, i) => {
-                  const maxCal = Math.max(...weeklyData, 1);
-                  const heightPct = Math.round((weeklyData[i] / maxCal) * 100);
-                  const isToday = i === new Date().getDay();
+            {/* Water */}
+            <div className="cl-card" style={{ borderRadius: 18, padding: 22 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                  <span
+                    style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: 9,
+                      background: "rgba(77,158,255,.12)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "var(--info)",
+                    }}
+                  >
+                    <Droplet size={16} fill="currentColor" />
+                  </span>
+                  <span style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)" }}>Water</span>
+                </div>
+                <span className="cl-mono" style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                  {totalWaterMl.toLocaleString()} / {waterGoal.toLocaleString()} ml
+                </span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 7, marginBottom: 16 }}>
+                {Array.from({ length: 8 }).map((_, i) => {
+                  const filled = i < waterGlasses;
                   return (
-                    <div key={day} className="flex flex-col items-center gap-1 flex-1">
-                      <div
-                        style={{
-                          width: "100%",
-                          maxWidth: 20,
-                          height: `${Math.max(heightPct, 4)}%`,
-                          borderRadius: "4px 4px 0 0",
-                          background: isToday ? "var(--lime-400)" : "var(--surface-elevated)",
-                          transition: "height 0.3s ease",
-                        }}
-                      />
-                      <span style={{ fontSize: 10, color: isToday ? "var(--lime-400)" : "var(--text-tertiary)", fontWeight: isToday ? 600 : 400 }}>
-                        {day}
-                      </span>
+                    <div
+                      key={i}
+                      style={{
+                        aspectRatio: "1",
+                        borderRadius: 8,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        border: `1.5px solid ${filled ? "var(--lime-400)" : "var(--border-color)"}`,
+                        background: filled ? "rgba(170,255,0,.14)" : "var(--surface-elevated)",
+                        color: filled ? "var(--lime-400)" : "var(--text-tertiary)",
+                        transition: "all 0.2s ease",
+                      }}
+                    >
+                      <Droplet size={14} fill="currentColor" />
                     </div>
                   );
                 })}
               </div>
+              <button
+                onClick={handleAddWater}
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  background: "var(--surface-elevated)",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: 10,
+                  color: "var(--text-primary)",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 7,
+                }}
+              >
+                <Plus size={15} /> Add a glass
+              </button>
+            </div>
+
+            {/* Weekly */}
+            <div className="cl-card" style={{ borderRadius: 18, padding: 22 }}>
               {(() => {
-                const daysWithData = weeklyData.filter(d => d > 0).length;
+                const daysWithData = weeklyData.filter((d) => d > 0).length;
                 const weekAvg = daysWithData > 0 ? Math.round(weeklyData.reduce((a, b) => a + b, 0) / daysWithData) : 0;
+                const maxCal = Math.max(...weeklyData, 1);
+                const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+                const todayIdx = new Date().getDay();
                 return (
-                  <p className="text-center mt-3" style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
-                    Avg: <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>{weekAvg.toLocaleString()}</span> kcal/day
-                  </p>
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
+                      <span style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)" }}>Weekly</span>
+                      <span className="cl-mono" style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
+                        avg {weekAvg.toLocaleString()} kcal
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "flex-end", gap: 9, height: 84 }}>
+                      {days.map((day, i) => {
+                        const isToday = i === todayIdx;
+                        const heightPct = Math.max(6, Math.round((weeklyData[i] / maxCal) * 100));
+                        return (
+                          <div
+                            key={day}
+                            style={{
+                              flex: 1,
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              gap: 8,
+                              height: "100%",
+                              justifyContent: "flex-end",
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: "100%",
+                                height: `${heightPct}%`,
+                                borderRadius: "6px 6px 3px 3px",
+                                background: isToday ? "var(--lime-400)" : "var(--surface-hover)",
+                                transition: "height 0.3s ease",
+                              }}
+                            />
+                            <span
+                              className="cl-mono"
+                              style={{ fontSize: 11, color: isToday ? "var(--lime-400)" : "var(--text-tertiary)" }}
+                            >
+                              {day[0]}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
                 );
               })()}
             </div>
 
-            {/* Nutrition Streak */}
-            <div className="cl-card-accent" style={{ borderRadius: 20, padding: 24, textAlign: "center" }}>
-              <div style={{ fontSize: 32, marginBottom: 4 }}>🔥</div>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 28, fontWeight: 700, color: "var(--warning)" }}>{streak}</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>Day Streak</div>
-              <p style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{streak > 0 ? "Keep logging to maintain your streak" : "Start logging food to build a streak!"}</p>
+            {/* Streak */}
+            <div
+              className="cl-card"
+              style={{ position: "relative", overflow: "hidden", border: "1px solid rgba(255,184,0,.3)", borderRadius: 18, padding: 22 }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <span
+                  style={{
+                    flex: "none",
+                    width: 52,
+                    height: 52,
+                    borderRadius: 14,
+                    background: "rgba(255,184,0,.12)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 26,
+                  }}
+                >
+                  🔥
+                </span>
+                <div>
+                  <div className="cl-mono" style={{ fontSize: 26, fontWeight: 700, color: "var(--warning)", lineHeight: 1 }}>
+                    {streak} {streak === 1 ? "day" : "days"}
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 3 }}>
+                    {streak > 0 ? "Logging streak — keep it alive" : "Start logging food to build a streak!"}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -978,6 +1169,17 @@ export default function DietPage() {
 
       {/* Keyframe animations */}
       <style jsx>{`
+        .diet-cols {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 326px;
+          gap: 20px;
+          align-items: start;
+        }
+        @media (max-width: 860px) {
+          .diet-cols {
+            grid-template-columns: 1fr;
+          }
+        }
         @keyframes fadeIn {
           from { opacity: 0; }
           to { opacity: 1; }

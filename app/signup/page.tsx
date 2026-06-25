@@ -4,7 +4,7 @@ import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, up
 import { auth } from "../../lib/firebase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Eye, EyeOff, Activity, Utensils, Dumbbell, Sun, Moon } from "lucide-react";
+import { Eye, EyeOff, Activity, Utensils, Dumbbell, Sun, Moon, Check } from "lucide-react";
 import { useTheme } from "next-themes";
 import React from "react";
 
@@ -70,70 +70,136 @@ export default function SignupPage() {
     }
   };
 
+  const features = [
+    { icon: Activity, t: "Advanced Tracking", s: "Monitor your calories, macros, and activity in real-time." },
+    { icon: Utensils, t: "AI Nutrition Analysis", s: "Snap a photo and get instant nutritional breakdown." },
+    { icon: Dumbbell, t: "On-device Form Analysis", s: "AI-powered exercise form correction to prevent injuries." },
+  ];
+
   return (
-    <div className="min-h-screen flex" style={{ background: "var(--bg-app)" }}>
-
-      {/* ── Left Half — Branding ── */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
+    <div
+      className="cl-auth"
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1.04fr 1fr",
+        minHeight: "100vh",
+        background: "var(--bg-app)",
+      }}
+    >
+      {/* ── Brand panel ── */}
+      <div
+        className="cl-brand"
+        style={{
+          position: "relative",
+          overflow: "hidden",
+          background: "#0A0C0F",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          padding: "64px 72px",
+        }}
+      >
+        {/* radial glow */}
         <div
-          className="absolute inset-0"
           style={{
-            background: "linear-gradient(135deg, #0A0C0F 0%, #0F1218 50%, #161B24 100%)",
+            position: "absolute",
+            inset: 0,
+            background:
+              "radial-gradient(680px 460px at 18% 30%,rgba(170,255,0,.16),transparent 60%),radial-gradient(600px 600px at 90% 90%,rgba(77,158,255,.10),transparent 55%)",
           }}
         />
+        {/* faint grid */}
         <div
-          className="absolute"
           style={{
-            width: 400,
-            height: 400,
-            borderRadius: "50%",
-            background: "radial-gradient(circle, rgba(170,255,0,0.08) 0%, transparent 70%)",
-            bottom: "10%",
-            right: "10%",
-            filter: "blur(60px)",
+            position: "absolute",
+            inset: 0,
+            backgroundImage:
+              "linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px)",
+            backgroundSize: "46px 46px",
+            maskImage: "radial-gradient(620px 620px at 30% 40%,#000,transparent 75%)",
+            WebkitMaskImage: "radial-gradient(620px 620px at 30% 40%,#000,transparent 75%)",
           }}
         />
 
-        <div className="relative z-10 flex flex-col justify-center p-12 lg:p-20 w-full max-w-lg mx-auto">
-          <div className="mb-10">
-            <div className="brand-wordmark" style={{ fontSize: 40, lineHeight: 1 }}>
-              <span style={{ color: "#FFFFFF" }}>calo</span>
-              <span style={{ color: "#AAFF00" }}>lean</span>
-            </div>
-            <div
-              className="flex items-center gap-2 mt-4"
-              style={{ fontSize: 12, letterSpacing: "0.2em", fontWeight: 500, color: "rgba(255,255,255,0.6)" }}
+        <div style={{ position: "relative" }}>
+          {/* brand mark + wordmark */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 54 }}>
+            <svg width="30" height="30" viewBox="0 0 512 512">
+              <rect width="512" height="512" rx="120" fill="#13171F" />
+              <path
+                d="M340 178c-20-26-52-42-88-42-62 0-110 50-110 120s48 120 110 120c36 0 68-16 88-42"
+                fill="none"
+                stroke="var(--lime-400)"
+                strokeWidth="52"
+                strokeLinecap="round"
+              />
+              <circle cx="356" cy="256" r="30" fill="var(--lime-400)" />
+            </svg>
+            <span
+              style={{
+                fontFamily: "var(--font-display)",
+                fontSize: 26,
+                fontWeight: 700,
+                letterSpacing: "-.5px",
+                color: "#fff",
+              }}
             >
-              <span>TRAIN SMARTER</span>
-              <span style={{ color: "#AAFF00", fontSize: 8 }}>●</span>
-              <span>EAT CLEANER</span>
-              <span style={{ color: "#AAFF00", fontSize: 8 }}>●</span>
-              <span>GET LEANER</span>
-            </div>
+              calo<span style={{ color: "var(--lime-400)" }}>lean</span>
+            </span>
           </div>
 
-          <div className="space-y-8 mt-12">
-            {[
-              { icon: Activity, title: "Advanced Tracking", desc: "Monitor your vitals and nutrition in real-time." },
-              { icon: Utensils, title: "AI Nutrition Analysis", desc: "Snap a photo, get instant macro breakdown." },
-              { icon: Dumbbell, title: "Form Analysis", desc: "Perfect your exercise technique with AI feedback." },
-            ].map((feature, i) => (
-              <div key={i} className="flex items-start gap-5 animate-fade-in-up" style={{ animationDelay: `${i * 0.15}s` }}>
-                <div
-                  className="shrink-0 flex items-center justify-center"
+          {/* headline */}
+          <h1
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: 46,
+              lineHeight: 1.05,
+              fontWeight: 700,
+              color: "#fff",
+              margin: "0 0 18px",
+              maxWidth: "9ch",
+            }}
+          >
+            Train smart. Eat clean.
+          </h1>
+
+          {/* mono kicker */}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 48 }}>
+            <span
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 12,
+                letterSpacing: ".18em",
+                color: "var(--lime-400)",
+              }}
+            >
+              GET LEANER, FASTER
+            </span>
+          </div>
+
+          {/* feature rows */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 380 }}>
+            {features.map((f, i) => (
+              <div key={i} style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+                <span
                   style={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: "var(--radius-full)",
-                    background: "rgba(170, 255, 0, 0.1)",
-                    border: "1px solid rgba(170, 255, 0, 0.2)",
+                    flex: "none",
+                    width: 42,
+                    height: 42,
+                    borderRadius: 12,
+                    background: "rgba(170,255,0,.12)",
+                    border: "1px solid rgba(170,255,0,.25)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "var(--lime-400)",
                   }}
                 >
-                  <feature.icon size={22} style={{ color: "#AAFF00" }} />
-                </div>
+                  <f.icon size={20} />
+                </span>
                 <div>
-                  <h3 style={{ fontSize: 17, fontWeight: 600, color: "#FFFFFF", marginBottom: 4 }}>{feature.title}</h3>
-                  <p style={{ fontSize: 14, color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>{feature.desc}</p>
+                  <div style={{ color: "#fff", fontWeight: 600, fontSize: 15 }}>{f.t}</div>
+                  <div style={{ color: "#8A95AC", fontSize: 13, lineHeight: 1.5, marginTop: 2 }}>{f.s}</div>
                 </div>
               </div>
             ))}
@@ -141,201 +207,311 @@ export default function SignupPage() {
         </div>
       </div>
 
-      {/* ── Right Half — Signup Form ── */}
+      {/* ── Form side ── */}
       <div
-        className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-8 relative"
-        style={{ background: "var(--bg-app)" }}
+        className="cl-authpad"
+        style={{
+          position: "relative",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: "48px 56px",
+          background: "var(--bg-app)",
+        }}
       >
-        {/* Theme toggle */}
+        {/* Theme toggle - top right */}
         {mounted && (
           <button
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="btn-icon absolute top-6 right-6 z-10"
             aria-label="Toggle theme"
+            style={{
+              position: "absolute",
+              top: 26,
+              right: 28,
+              width: 42,
+              height: 42,
+              borderRadius: 12,
+              border: "1px solid var(--border-color)",
+              background: "var(--surface-card)",
+              color: "var(--text-secondary)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
             {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
           </button>
         )}
 
-        <div className="w-full max-w-[460px] animate-float-in">
-          {/* Mobile logo */}
-          <div className="lg:hidden mb-8 text-center">
-            <div className="brand-wordmark inline-block" style={{ fontSize: 32 }}>
-              <span style={{ color: "var(--text-primary)" }}>calo</span>
-              <span style={{ color: "var(--lime-400)" }}>lean</span>
-            </div>
-          </div>
+        <div style={{ width: "100%", maxWidth: 420 }}>
+          <h2
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: 32,
+              fontWeight: 700,
+              margin: "0 0 8px",
+              color: "var(--text-primary)",
+            }}
+          >
+            Create account
+          </h2>
+          <p style={{ margin: "0 0 28px", color: "var(--text-secondary)", fontSize: 15 }}>
+            Start your transformation today.
+          </p>
 
-          {/* Card */}
-          <div className="cl-card-elevated" style={{ padding: "36px 32px" }}>
-            <h2
+          <form onSubmit={handleSignup}>
+            {error && (
+              <div
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 12,
+                  background: "rgba(255, 77, 77, 0.1)",
+                  border: "1px solid rgba(255, 77, 77, 0.3)",
+                  color: "var(--error)",
+                  fontSize: 13,
+                  textAlign: "center",
+                  marginBottom: 16,
+                }}
+              >
+                {error}
+              </div>
+            )}
+
+            {/* Full Name */}
+            <label
               style={{
-                fontFamily: "var(--font-display)",
-                fontSize: 28,
-                fontWeight: 700,
-                color: "var(--text-primary)",
-                marginBottom: 6,
+                display: "block",
+                fontSize: 13,
+                fontWeight: 500,
+                color: "var(--text-secondary)",
+                marginBottom: 7,
               }}
             >
-              Create Account
-            </h2>
-            <p style={{ fontSize: 14, color: "var(--text-secondary)", marginBottom: 28 }}>
-              Start your health transformation today.
-            </p>
+              Full name
+            </label>
+            <input
+              type="text"
+              placeholder="Jane Doe"
+              className="cl-input"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              required
+              style={{ marginBottom: 16 }}
+            />
 
-            <form onSubmit={handleSignup} className="space-y-4">
-              {error && (
-                <div
-                  style={{
-                    padding: "10px 14px",
-                    borderRadius: "var(--radius-md)",
-                    background: "rgba(255, 77, 77, 0.1)",
-                    border: "1px solid rgba(255, 77, 77, 0.3)",
-                    color: "var(--error)",
-                    fontSize: 13,
-                    textAlign: "center",
-                  }}
-                >
-                  {error}
-                </div>
-              )}
+            {/* Email */}
+            <label
+              style={{
+                display: "block",
+                fontSize: 13,
+                fontWeight: 500,
+                color: "var(--text-secondary)",
+                marginBottom: 7,
+              }}
+            >
+              Email address
+            </label>
+            <input
+              type="email"
+              placeholder="jane@example.com"
+              className="cl-input"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              style={{ marginBottom: 16 }}
+            />
 
-              {/* Full Name */}
-              <div>
-                <label className="cl-label">Full Name</label>
-                <input
-                  type="text"
-                  placeholder="Jane Doe"
-                  className="cl-input"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  required
-                />
-              </div>
-
-              {/* Email */}
-              <div>
-                <label className="cl-label">Email Address</label>
-                <input
-                  type="email"
-                  placeholder="jane@example.com"
-                  className="cl-input"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-
-              {/* Password */}
-              <div>
-                <label className="cl-label">Password</label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Min. 8 characters"
-                    className="cl-input"
-                    style={{ paddingRight: 48 }}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2"
-                    style={{ color: "var(--text-tertiary)", background: "none", border: "none", cursor: "pointer" }}
-                  >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Confirm Password */}
-              <div>
-                <label className="cl-label">Confirm Password</label>
-                <div className="relative">
-                  <input
-                    type={showConfirmPassword ? "text" : "password"}
-                    placeholder="Re-enter password"
-                    className="cl-input"
-                    style={{ paddingRight: 48 }}
-                    value={confirmPass}
-                    onChange={(e) => setConfirmPass(e.target.value)}
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2"
-                    style={{ color: "var(--text-tertiary)", background: "none", border: "none", cursor: "pointer" }}
-                  >
-                    {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Terms Checkbox */}
-              <div className="flex items-start gap-3 pt-1">
-                <div className="flex items-center" style={{ height: 24 }}>
-                  <input
-                    id="terms"
-                    type="checkbox"
-                    checked={agreed}
-                    onChange={(e) => setAgreed(e.target.checked)}
-                    required
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: 6,
-                      border: `1.5px solid var(--border-color)`,
-                      background: "var(--input-bg)",
-                      accentColor: "var(--lime-400)",
-                      cursor: "pointer",
-                    }}
-                  />
-                </div>
-                <label htmlFor="terms" style={{ fontSize: 13, color: "var(--text-secondary)", cursor: "pointer", lineHeight: 1.5 }}>
-                  I agree to the{" "}
-                  <span style={{ fontWeight: 600, color: "var(--lime-400)" }}>Terms of Service</span>{" "}
-                  and{" "}
-                  <span style={{ fontWeight: 600, color: "var(--lime-400)" }}>Privacy Policy</span>
-                </label>
-              </div>
-
-              {/* Submit */}
+            {/* Password */}
+            <label
+              style={{
+                display: "block",
+                fontSize: 13,
+                fontWeight: 500,
+                color: "var(--text-secondary)",
+                marginBottom: 7,
+              }}
+            >
+              Password
+            </label>
+            <div style={{ position: "relative", marginBottom: 16 }}>
+              <input
+                type={showPassword ? "text" : "password"}
+                placeholder="Min. 8 characters"
+                className="cl-input"
+                style={{ paddingRight: 46 }}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
               <button
-                type="submit"
-                className="btn-primary w-full"
-                style={{ height: 52, fontSize: 15, marginTop: 8, borderRadius: "var(--radius-md)" }}
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                style={{
+                  position: "absolute",
+                  right: 12,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  color: "var(--text-tertiary)",
+                  cursor: "pointer",
+                  padding: 4,
+                  display: "flex",
+                }}
               >
-                Create Account
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
-            </form>
-
-            {/* Divider */}
-            <div className="flex items-center my-6">
-              <div className="flex-1" style={{ height: 1, background: "var(--border-color)" }} />
-              <span className="px-4" style={{ fontSize: 13, color: "var(--text-tertiary)" }}>
-                or continue with
-              </span>
-              <div className="flex-1" style={{ height: 1, background: "var(--border-color)" }} />
             </div>
 
-            {/* Google */}
-            <button onClick={handleGoogleSignup} type="button" className="btn-social">
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z"/>
-              </svg>
-              Continue with Google
-            </button>
+            {/* Confirm Password */}
+            <label
+              style={{
+                display: "block",
+                fontSize: 13,
+                fontWeight: 500,
+                color: "var(--text-secondary)",
+                marginBottom: 7,
+              }}
+            >
+              Confirm password
+            </label>
+            <div style={{ position: "relative", marginBottom: 22 }}>
+              <input
+                type={showConfirmPassword ? "text" : "password"}
+                placeholder="Re-enter password"
+                className="cl-input"
+                style={{ paddingRight: 46 }}
+                value={confirmPass}
+                onChange={(e) => setConfirmPass(e.target.value)}
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                style={{
+                  position: "absolute",
+                  right: 12,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  color: "var(--text-tertiary)",
+                  cursor: "pointer",
+                  padding: 4,
+                  display: "flex",
+                }}
+              >
+                {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
 
-            <p className="text-center mt-7" style={{ fontSize: 14, color: "var(--text-secondary)" }}>
-              Already have an account?{" "}
-              <Link href="/login" style={{ fontWeight: 600, color: "var(--lime-400)" }}>
-                Sign in
-              </Link>
-            </p>
+            {/* Terms Checkbox */}
+            <div
+              onClick={() => setAgreed(!agreed)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 11,
+                marginBottom: 22,
+                cursor: "pointer",
+              }}
+            >
+              <span
+                style={{
+                  flex: "none",
+                  width: 20,
+                  height: 20,
+                  borderRadius: 6,
+                  border: `1.5px solid ${agreed ? "var(--lime-400)" : "var(--border-color)"}`,
+                  background: agreed ? "var(--lime-400)" : "var(--input-bg)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#0A0C0F",
+                }}
+              >
+                {agreed && <Check size={14} strokeWidth={3} />}
+              </span>
+              {/* hidden input preserves required validation + checked state wiring */}
+              <input
+                id="terms"
+                type="checkbox"
+                checked={agreed}
+                onChange={(e) => setAgreed(e.target.checked)}
+                required
+                style={{ position: "absolute", opacity: 0, width: 0, height: 0, pointerEvents: "none" }}
+                tabIndex={-1}
+                aria-hidden="true"
+              />
+              <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                I agree to the{" "}
+                <span style={{ color: "var(--lime-600)", fontWeight: 600 }}>Terms of Service</span> and{" "}
+                <span style={{ color: "var(--lime-600)", fontWeight: 600 }}>Privacy Policy</span>
+              </span>
+            </div>
+
+            {/* Submit */}
+            <button type="submit" className="btn-primary" style={{ width: "100%" }}>
+              Create account
+            </button>
+          </form>
+
+          {/* Divider */}
+          <div style={{ display: "flex", alignItems: "center", gap: 14, margin: "22px 0" }}>
+            <span style={{ flex: 1, height: 1, background: "var(--border-color)" }} />
+            <span style={{ fontSize: 12, color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>
+              or continue with
+            </span>
+            <span style={{ flex: 1, height: 1, background: "var(--border-color)" }} />
           </div>
+
+          {/* Google */}
+          <button
+            onClick={handleGoogleSignup}
+            type="button"
+            className="cl-card-hover"
+            style={{
+              width: "100%",
+              padding: 13,
+              background: "var(--surface-card)",
+              border: "1px solid var(--border-color)",
+              borderRadius: 12,
+              color: "var(--text-primary)",
+              fontWeight: 500,
+              fontSize: 15,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 10,
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z" />
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z" />
+              <path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88z" />
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15A10.9 10.9 0 0 0 12 1 11 11 0 0 0 2.18 7.06l3.66 2.84C6.71 7.3 9.14 5.38 12 5.38z" />
+            </svg>
+            Continue with Google
+          </button>
+
+          <p
+            style={{
+              textAlign: "center",
+              margin: "24px 0 0",
+              fontSize: 14,
+              color: "var(--text-secondary)",
+            }}
+          >
+            Already have an account?{" "}
+            <Link href="/login" style={{ color: "var(--lime-600)", fontWeight: 700 }}>
+              Sign in
+            </Link>
+          </p>
         </div>
       </div>
     </div>

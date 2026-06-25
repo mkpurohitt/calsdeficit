@@ -8,7 +8,7 @@ import FormCheckPanel from "../../components/FormCheckPanel";
 import { useAuth } from "../../lib/AuthContext";
 import { getDateKey, getDateKeyDaysAgo, getDay, getFormAnalyses, getWorkoutLogs, saveWorkoutLog } from "../../lib/user-data";
 import { STEP_GOAL } from "../../lib/config/app";
-import { CheckCircle, ChevronRight, Dumbbell, Flame, Footprints, Loader2, Plus, Search, Timer, Video } from "lucide-react";
+import { CheckCircle, ChevronRight, Dumbbell, Footprints, Loader2, Plus, Search, Video } from "lucide-react";
 
 interface ExerciseRecord {
   id: string;
@@ -178,26 +178,35 @@ export default function ExercisePage() {
     }
   };
 
+  const weekNumber = useMemo(() => {
+    const start = new Date(today.getFullYear(), 0, 1);
+    const diffDays = Math.floor((today.getTime() - start.getTime()) / 86400000);
+    return Math.ceil((diffDays + start.getDay() + 1) / 7);
+  }, [today]);
+
   return (
     <AppLayout>
-      <div className="p-6 lg:p-8">
-        <div className="flex items-center justify-between mb-6">
+      <style>{`
+        .ex-cols3 { display: grid; grid-template-columns: 340px minmax(0,1fr) 336px; gap: 20px; align-items: start; }
+        @media (max-width: 1180px) { .ex-cols3 { grid-template-columns: 1fr 1fr; } }
+        @media (max-width: 860px) { .ex-cols3 { grid-template-columns: 1fr; } }
+      `}</style>
+      <div style={{ padding: "30px 38px 48px", maxWidth: 1380, margin: "0 auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
           <div>
-            <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 700, color: "var(--text-primary)" }}>
+            <div className="cl-mono" style={{ fontFamily: "var(--font-mono)", fontSize: 12, letterSpacing: "0.12em", color: "var(--text-tertiary)", marginBottom: 7 }}>
+              TRAINING · WEEK {weekNumber}
+            </div>
+            <h1 className="cl-disp" style={{ fontFamily: "var(--font-display)", fontSize: 30, fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>
               Exercise
-            </h2>
-            <p style={{ fontSize: 14, color: "var(--text-secondary)", marginTop: 2 }}>
-              {todayWorkout.length > 0
-                ? `${todayWorkout.length} exercises logged ${isSelectedToday ? "today" : "on selected day"}`
-                : isSelectedToday ? "No exercises logged yet today" : "No exercises logged for this day"}
-            </p>
+            </h1>
           </div>
           <button
             onClick={() => router.push("/?mode=gym")}
             className="flex items-center gap-2"
             style={{
-              padding: "10px 20px",
-              borderRadius: "var(--radius-full)",
+              padding: "12px 20px",
+              borderRadius: "var(--radius-md)",
               background: "var(--lime-400)",
               color: "#0A0C0F",
               fontWeight: 700,
@@ -207,23 +216,24 @@ export default function ExercisePage() {
               boxShadow: "var(--shadow-lime-sm)",
             }}
           >
-            <Video size={16} /> Check Form
+            <Video size={18} /> Check Form
           </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="space-y-6">
-            <div className="cl-card" style={{ borderRadius: 20, padding: 24, display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <div style={{ position: "relative", width: stepRingSize, height: stepRingSize, marginBottom: 12 }}>
+        <div className="ex-cols3">
+          {/* LEFT */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <div className="cl-card" style={{ borderRadius: 18, padding: 24, textAlign: "center" }}>
+              <div style={{ position: "relative", width: stepRingSize, height: stepRingSize, margin: "0 auto 8px" }}>
                 <svg width={stepRingSize} height={stepRingSize} viewBox={`0 0 ${stepRingSize} ${stepRingSize}`}>
-                  <circle cx={stepRingSize / 2} cy={stepRingSize / 2} r={stepR} fill="none" stroke="var(--surface-elevated)" strokeWidth="8" />
+                  <circle cx={stepRingSize / 2} cy={stepRingSize / 2} r={stepR} fill="none" stroke="var(--ring-track)" strokeWidth="11" />
                   <circle
                     cx={stepRingSize / 2}
                     cy={stepRingSize / 2}
                     r={stepR}
                     fill="none"
-                    stroke="var(--lime-400)"
-                    strokeWidth="8"
+                    stroke="var(--info)"
+                    strokeWidth="11"
                     strokeLinecap="round"
                     strokeDasharray={stepCirc}
                     strokeDashoffset={stepDash}
@@ -231,72 +241,51 @@ export default function ExercisePage() {
                   />
                 </svg>
                 <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                  <Footprints size={16} style={{ color: "var(--lime-400)", marginBottom: 2 }} />
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 20, fontWeight: 700, color: "var(--lime-400)" }}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 26, fontWeight: 700, color: "var(--text-primary)" }}>
                     {steps.toLocaleString()}
                   </span>
+                  <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>/ {stepGoal.toLocaleString()} steps</span>
                 </div>
               </div>
-              <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                {steps.toLocaleString()} / {stepGoal.toLocaleString()} steps
-              </p>
-              <Link href="/profile/google-fit" style={{ fontSize: 11, color: "var(--lime-400)", marginTop: 4 }}>
-                Connect Google Health to sync steps
+              <Link href="/profile/google-fit" style={{ fontSize: 12, color: "var(--text-tertiary)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <Footprints size={13} style={{ color: "var(--lime-400)" }} /> Connect Google Health to sync steps
               </Link>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="cl-card" style={{ borderRadius: 16, padding: 16 }}>
-                <div className="flex items-center gap-2 mb-2">
-                  <div style={{ padding: 6, borderRadius: "var(--radius-sm)", background: "rgba(255, 184, 0, 0.15)" }}>
-                    <Flame size={16} style={{ color: "var(--warning)" }} />
-                  </div>
-                </div>
-                <p className="card-stat__label">Exercises</p>
-                <p className="card-stat__value" style={{ fontSize: 22 }}>{todayWorkout.length}</p>
-                <p style={{ fontSize: 11, color: "var(--text-tertiary)" }}>selected day</p>
-              </div>
-              <div className="cl-card" style={{ borderRadius: 16, padding: 16 }}>
-                <div className="flex items-center gap-2 mb-2">
-                  <div style={{ padding: 6, borderRadius: "var(--radius-sm)", background: "rgba(77, 158, 255, 0.15)" }}>
-                    <Timer size={16} style={{ color: "var(--info)" }} />
-                  </div>
-                </div>
-                <p className="card-stat__label">Form Checks</p>
-                <p className="card-stat__value" style={{ fontSize: 22 }}>{formHistory.length}</p>
-                <p style={{ fontSize: 11, color: "var(--text-tertiary)" }}>recent</p>
-              </div>
             </div>
 
             <FormCheckPanel onResult={() => setAnalysisVersion((version) => version + 1)} />
           </div>
 
-          <div className="space-y-6">
-            <div className="cl-card" style={{ borderRadius: 20, padding: 20 }}>
-              <div className="flex justify-between gap-1">
+          {/* CENTER */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <div className="cl-card" style={{ borderRadius: 16, padding: 10 }}>
+              <div style={{ display: "flex", gap: 8 }}>
                 {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, index) => {
                   const date = new Date(today);
                   date.setDate(today.getDate() - today.getDay() + index);
                   const isToday = index === today.getDay();
+                  const isActive = selectedDay === index;
                   const hasWorkout = workoutDaysThisWeek.includes(index);
 
                   return (
                     <button
                       key={day}
                       onClick={() => setSelectedDay(index)}
-                      className="flex flex-col items-center gap-1 flex-1 py-2"
                       style={{
-                        borderRadius: "var(--radius-md)",
-                        background: selectedDay === index ? (isToday ? "var(--lime-400)" : "var(--surface-elevated)") : "transparent",
-                        color: selectedDay === index && isToday ? "#0A0C0F" : "var(--text-primary)",
-                        border: "none",
+                        flex: 1,
+                        textAlign: "center",
+                        padding: "11px 0",
+                        borderRadius: 11,
                         cursor: "pointer",
+                        border: "none",
+                        background: isActive ? (isToday ? "var(--lime-400)" : "var(--surface-elevated)") : "transparent",
                       }}
                     >
-                      <span style={{ fontSize: 11, color: selectedDay === index && isToday ? "#0A0C0F" : "var(--text-tertiary)", fontWeight: 500 }}>{day}</span>
-                      <span style={{ fontSize: 16, fontWeight: 600, fontFamily: "var(--font-mono)" }}>{date.getDate()}</span>
+                      <div style={{ fontSize: 11, fontWeight: 500, color: isActive && isToday ? "#0A0C0F" : "var(--text-tertiary)" }}>{day}</div>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 18, fontWeight: 700, marginTop: 3, color: isActive && isToday ? "#0A0C0F" : "var(--text-primary)" }}>
+                        {date.getDate()}
+                      </div>
                       {hasWorkout && (
-                        <span style={{ width: 5, height: 5, borderRadius: "50%", background: selectedDay === index && isToday ? "#0A0C0F" : "var(--lime-400)" }} />
+                        <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", marginTop: 3, background: isActive && isToday ? "#0A0C0F" : "var(--lime-400)" }} />
                       )}
                     </button>
                   );
@@ -304,64 +293,61 @@ export default function ExercisePage() {
               </div>
             </div>
 
-            <div>
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 12 }}>{selectedLogTitle}</h3>
-              <div className="space-y-2">
+            <div className="cl-card" style={{ borderRadius: 18, padding: 22 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <div style={{ fontWeight: 600, fontSize: 16, color: "var(--text-primary)" }}>{selectedLogTitle}</div>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--lime-600)" }}>
+                  {todayWorkout.length} {todayWorkout.length === 1 ? "exercise" : "exercises"}
+                </span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {todayWorkout.length === 0 && (
                   <p style={{ fontSize: 13, color: "var(--text-tertiary)", textAlign: "center", padding: 20 }}>
                     No exercises logged for this day. Use the Muscle Library to log sets.
                   </p>
                 )}
                 {todayWorkout.map((exercise, index) => (
-                  <div key={`${exercise.name}-${index}`} className="cl-card flex items-center justify-between card-hover" style={{ borderRadius: "var(--radius-lg)", padding: "14px 16px" }}>
-                    <div className="flex items-center gap-3">
-                      <div style={{ width: 28, height: 28, borderRadius: "var(--radius-full)", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--lime-400)" }}>
-                        <CheckCircle size={16} color="#0A0C0F" />
-                      </div>
-                      <div>
-                        <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", textTransform: "capitalize" }}>{exercise.name}</p>
-                        <div className="flex items-center gap-2" style={{ marginTop: 2 }}>
-                          <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{exercise.sets}</span>
-                          <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>-</span>
-                          <span style={{ fontSize: 12, color: "var(--text-tertiary)", fontFamily: "var(--font-mono)" }}>{exercise.weight}</span>
-                          {exercise.muscle && (
-                            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: "var(--radius-sm)", background: "rgba(170, 255, 0, 0.1)", color: "var(--lime-400)", fontWeight: 500, textTransform: "capitalize" }}>
-                              {exercise.muscle}
-                            </span>
-                          )}
-                        </div>
+                  <div key={`${exercise.name}-${index}`} style={{ display: "flex", alignItems: "center", gap: 14, padding: 14, background: "var(--surface-elevated)", borderRadius: 12 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", textTransform: "capitalize" }}>{exercise.name}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2, textTransform: "capitalize" }}>
+                        {[exercise.muscle, exercise.sets, exercise.weight].filter(Boolean).join(" · ")}
                       </div>
                     </div>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: "var(--lime-400)" }}>Done</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: "var(--radius-full)", background: "rgba(170, 255, 0, 0.12)", color: "var(--lime-600)" }}>
+                      Done
+                    </span>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div>
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 12 }}>Past Form Checks</h3>
-              <div className="space-y-2">
+            <div className="cl-card" style={{ borderRadius: 18, padding: 22 }}>
+              <div style={{ fontWeight: 600, fontSize: 16, color: "var(--text-primary)", marginBottom: 14 }}>Past Form Checks</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {formHistory.length === 0 && (
                   <p style={{ fontSize: 13, color: "var(--text-tertiary)", textAlign: "center", padding: 20 }}>
                     No form analyses yet. Upload a video to get started.
                   </p>
                 )}
                 {formHistory.map((item, index) => (
-                  <div key={`${item.exercise}-${index}`} className="cl-card flex items-center justify-between card-hover" style={{ borderRadius: "var(--radius-lg)", padding: "12px 16px" }}>
-                    <div>
-                      <p style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>{item.exercise}</p>
-                      <p style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{item.date}</p>
-                    </div>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 700, color: item.score >= 8 ? "var(--lime-400)" : "var(--warning)" }}>
-                      {item.score}/10
+                  <div key={`${item.exercise}-${index}`} className="cl-card-hover" style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 14px", background: "var(--surface-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 12 }}>
+                    <span style={{ flex: "none", width: 44, height: 44, borderRadius: 11, background: item.score >= 8 ? "rgba(170, 255, 0, 0.12)" : "rgba(255, 184, 0, 0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 15, color: item.score >= 8 ? "var(--lime-600)" : "var(--warning)" }}>{item.score}</span>
                     </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{item.exercise}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 1 }}>{item.date} · score {item.score}/10</div>
+                    </div>
+                    <ChevronRight size={18} style={{ color: "var(--text-tertiary)", flexShrink: 0 }} />
                   </div>
                 ))}
               </div>
             </div>
           </div>
 
-          <div className="space-y-4">
+          {/* RIGHT: Muscle Library */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {logSuccess && (
               <div className="animate-fade-in-up" style={{ padding: "10px 16px", borderRadius: "var(--radius-md)", background: "rgba(170, 255, 0, 0.12)", border: "1px solid rgba(170, 255, 0, 0.3)", display: "flex", alignItems: "center", gap: 8 }}>
                 <CheckCircle size={16} style={{ color: "var(--lime-400)" }} />
@@ -375,10 +361,10 @@ export default function ExercisePage() {
               </div>
             )}
 
-            <div className="cl-card" style={{ borderRadius: 20, padding: 24 }}>
+            <div className="cl-card" style={{ borderRadius: 18, padding: 20 }}>
               <div className="flex items-center justify-between mb-3">
-                <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>Muscle Library</h3>
-                <Dumbbell size={18} style={{ color: "var(--lime-400)" }} />
+                <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>Muscle Library</h3>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-tertiary)" }}>1,300+</span>
               </div>
 
               <div style={{ position: "relative", marginBottom: 12 }}>
@@ -405,13 +391,13 @@ export default function ExercisePage() {
                       fetchExercises(searchQuery, filter);
                     }}
                     style={{
-                      padding: "6px 14px",
+                      padding: "6px 13px",
                       borderRadius: "var(--radius-full)",
                       fontSize: 12,
                       fontWeight: 600,
                       background: activeFilter === filter ? "var(--lime-400)" : "var(--surface-elevated)",
                       color: activeFilter === filter ? "#0A0C0F" : "var(--text-secondary)",
-                      border: "none",
+                      border: activeFilter === filter ? "1px solid var(--lime-400)" : "1px solid var(--border-subtle)",
                       cursor: "pointer",
                     }}
                   >
@@ -420,7 +406,7 @@ export default function ExercisePage() {
                 ))}
               </div>
 
-              <div className="space-y-2" style={{ maxHeight: 480, overflowY: "auto" }}>
+              <div className="space-y-2" style={{ maxHeight: 540, overflowY: "auto" }}>
                 {exercises.length === 0 && !isSearching && (
                   <p style={{ fontSize: 13, color: "var(--text-tertiary)", textAlign: "center", padding: 20 }}>
                     No exercises found. Try a different search.
