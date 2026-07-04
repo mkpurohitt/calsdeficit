@@ -120,6 +120,41 @@ export async function findExercises({ id, query, muscles, limit = 10 }: Exercise
   return results.slice(0, limit);
 }
 
+export interface MuscleGroupCount {
+  muscle_group: string;
+  count: number;
+}
+
+/** Real per-muscle-group counts + total for the Muscle Library UI. */
+export async function countExercises(): Promise<{ total: number; groups: MuscleGroupCount[] }> {
+  if (isCloudSqlConfigured()) {
+    try {
+      const rows = await sql<{ muscle_group: string | null; count: string }>(
+        `SELECT muscle_group, count(*)::text AS count
+         FROM exercises
+         GROUP BY muscle_group
+         ORDER BY count(*) DESC`
+      );
+      const groups = rows
+        .filter((r) => r.muscle_group)
+        .map((r) => ({ muscle_group: r.muscle_group as string, count: Number(r.count) }));
+      const total = rows.reduce((a, r) => a + Number(r.count), 0);
+      return { total, groups };
+    } catch (error) {
+      console.error("[exercise-db] count query failed, falling back to dataset:", error);
+    }
+  }
+  const dataset = await loadDataset();
+  const map = new Map<string, number>();
+  for (const entry of dataset) {
+    map.set(entry.muscle_group, (map.get(entry.muscle_group) || 0) + 1);
+  }
+  const groups = [...map.entries()]
+    .map(([muscle_group, count]) => ({ muscle_group, count }))
+    .sort((a, b) => b.count - a.count);
+  return { total: dataset.length, groups };
+}
+
 /** Reference form cues for AI form scoring (Cloud SQL `form_reference`, else generic). */
 export async function getFormReference(exerciseName: string): Promise<Record<string, unknown> | null> {
   if (!isCloudSqlConfigured()) return null;

@@ -2,24 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import AppLayout from "../../components/AppLayout";
 import FormCheckPanel from "../../components/FormCheckPanel";
 import { useAuth } from "../../lib/AuthContext";
-import { getDateKey, getDateKeyDaysAgo, getDay, getFormAnalyses, getWorkoutLogs, saveWorkoutLog } from "../../lib/user-data";
+import { getDateKey, getDateKeyDaysAgo, getDay, getFormAnalyses, getUserGoal, getWorkoutLogs } from "../../lib/user-data";
 import { STEP_GOAL } from "../../lib/config/app";
-import { CheckCircle, ChevronRight, Dumbbell, Footprints, Loader2, Plus, Search, Video } from "lucide-react";
-
-interface ExerciseRecord {
-  id: string;
-  name: string;
-  muscle_group: string;
-  equipment?: string | null;
-  gif_url?: string | null;
-  body_part?: string | null;
-  secondary_muscles?: string[];
-  instructions?: string[];
-}
+import { ArrowRight, ChevronRight, Footprints, Plus, Upload, Video } from "lucide-react";
 
 interface WorkoutDisplayItem {
   name: string;
@@ -28,38 +16,27 @@ interface WorkoutDisplayItem {
   muscle: string;
 }
 
-const muscleFilters = ["All", "Chest", "Back", "Legs", "Arms", "Shoulders", "Core"];
-const muscleQueryMap: Record<string, string> = {
-  Chest: "pectorals",
-  Back: "lats",
-  Legs: "quads",
-  Arms: "biceps",
-  Shoulders: "delts",
-  Core: "abs",
-};
+interface LibraryCounts {
+  total: number;
+  groups: { muscle_group: string; count: number }[];
+}
+
+const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
 export default function ExercisePage() {
-  const router = useRouter();
   const { user } = useAuth() as { user: { uid?: string } | null };
-  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const formCheckRef = useRef<HTMLDivElement | null>(null);
 
   const [analysisVersion, setAnalysisVersion] = useState(0);
-  const [logSuccess, setLogSuccess] = useState<string | null>(null);
-  const [logError, setLogError] = useState<string | null>(null);
-  const [isLogging, setIsLogging] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [exercises, setExercises] = useState<ExerciseRecord[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [logForm, setLogForm] = useState({ sets: 3, reps: 10, weight_lbs: 0 });
-  const [imgErrors, setImgErrors] = useState<Record<string, boolean>>({});
+  const [showFormCheck, setShowFormCheck] = useState(false);
 
   const [todayWorkout, setTodayWorkout] = useState<WorkoutDisplayItem[]>([]);
   const [formHistory, setFormHistory] = useState<{ exercise: string; date: string; score: number }[]>([]);
   const [workoutDaysThisWeek, setWorkoutDaysThisWeek] = useState<number[]>([]);
   const [selectedDay, setSelectedDay] = useState(new Date().getDay());
-  const [activeFilter, setActiveFilter] = useState("All");
   const [steps, setSteps] = useState(0);
+  const [stepGoal, setStepGoal] = useState(STEP_GOAL);
+  const [libraryCounts, setLibraryCounts] = useState<LibraryCounts | null>(null);
 
   // Stable per-mount "today" so effects depending on it don't re-run every render
   const today = useMemo(() => new Date(), []);
@@ -71,40 +48,39 @@ export default function ExercisePage() {
     ? "Today's Log"
     : selectedDate.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
 
-  const stepGoal = STEP_GOAL;
   const stepPercent = Math.min(steps / stepGoal, 1);
-  const stepRingSize = 120;
-  const stepR = (stepRingSize / 2) - 10;
+  const stepRingSize = 86;
+  const stepR = (stepRingSize / 2) - 7;
   const stepCirc = 2 * Math.PI * stepR;
   const stepDash = stepCirc * (1 - stepPercent);
 
-  const fetchExercises = async (queryValue: string, muscleFilter: string) => {
-    setIsSearching(true);
-    try {
-      const params = new URLSearchParams();
-      if (queryValue) params.append("query", queryValue);
-      if (muscleFilter !== "All") params.append("muscle", muscleQueryMap[muscleFilter] || muscleFilter.toLowerCase());
-      const res = await fetch(`/api/exercises?${params.toString()}`);
-      const json = await res.json();
-      if (json.success) setExercises(json.data || []);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
   useEffect(() => {
-    fetchExercises("", activeFilter);
-  }, [activeFilter]);
+    let cancelled = false;
+    const loadCounts = async () => {
+      try {
+        const res = await fetch("/api/exercises?counts=1");
+        const json = await res.json();
+        if (!cancelled && json.success && json.data) setLibraryCounts(json.data);
+      } catch {
+        // teaser card falls back to a neutral state
+      }
+    };
+    loadCounts();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!user?.uid) return;
     const userId = user.uid;
 
     const loadUserData = async () => {
-      const [logs, analyses, day] = await Promise.all([
+      const [logs, analyses, day, goal] = await Promise.all([
         getWorkoutLogs(userId, { from: getDateKeyDaysAgo(7), to: getDateKey() }),
         getFormAnalyses(userId),
         getDay(userId, getDateKey()),
+        getUserGoal(userId),
       ]);
 
       const selectedLogs = logs.filter((log) => log.date_key === selectedDateKey);
@@ -138,44 +114,17 @@ export default function ExercisePage() {
       );
 
       setSteps(day?.steps || 0);
+      setStepGoal(goal?.step_goal || STEP_GOAL);
     };
 
     loadUserData();
-  }, [user, selectedDateKey, logSuccess, analysisVersion, today]);
+  }, [user, selectedDateKey, analysisVersion, today]);
 
-  const handleSearchChange = (value: string) => {
-    setSearchQuery(value);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => fetchExercises(value, activeFilter), 300);
-  };
-
-  const handleLogSet = async (exercise: ExerciseRecord) => {
-    if (!user?.uid) return;
-    setIsLogging(true);
-    setLogError(null);
-
-    try {
-      await saveWorkoutLog({
-        user_id: user.uid,
-        exercise_id: exercise.id,
-        exercise_name: exercise.name,
-        muscle_group: exercise.muscle_group,
-        sets: Number(logForm.sets) || 0,
-        reps: Number(logForm.reps) || 0,
-        weight_lbs: Number(logForm.weight_lbs) || 0,
-        date_key: selectedDateKey,
-        logged_at: new Date().toISOString(),
-      });
-
-      setLogSuccess(exercise.name);
-      setExpandedId(null);
-      setTimeout(() => setLogSuccess(null), 2500);
-      setSelectedDay(new Date().getDay());
-    } catch (err: unknown) {
-      setLogError(err instanceof Error ? err.message : "Could not log this set.");
-    } finally {
-      setIsLogging(false);
-    }
+  const handleUploadClick = () => {
+    setShowFormCheck(true);
+    setTimeout(() => {
+      formCheckRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
   };
 
   const weekNumber = useMemo(() => {
@@ -184,78 +133,72 @@ export default function ExercisePage() {
     return Math.ceil((diffDays + start.getDay() + 1) / 7);
   }, [today]);
 
+  const topGroups = libraryCounts?.groups.slice(0, 6) ?? [];
+
   return (
     <AppLayout>
       <style>{`
-        .ex-cols3 { display: grid; grid-template-columns: 340px minmax(0,1fr) 336px; gap: 20px; align-items: start; }
-        @media (max-width: 1180px) { .ex-cols3 { grid-template-columns: 1fr 1fr; } }
-        @media (max-width: 860px) { .ex-cols3 { grid-template-columns: 1fr; } }
+        .ex-cols2 { display: grid; grid-template-columns: minmax(0,1fr) 336px; gap: 20px; align-items: start; }
+        @media (max-width: 860px) { .ex-cols2 { grid-template-columns: 1fr; } }
       `}</style>
       <div style={{ padding: "30px 38px 48px", maxWidth: 1380, margin: "0 auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
-          <div>
-            <div className="cl-mono" style={{ fontFamily: "var(--font-mono)", fontSize: 12, letterSpacing: "0.12em", color: "var(--text-tertiary)", marginBottom: 7 }}>
-              TRAINING · WEEK {weekNumber}
+        <div style={{ marginBottom: 24 }}>
+          <div className="cl-mono" style={{ fontFamily: "var(--font-mono)", fontSize: 12, letterSpacing: "0.12em", color: "var(--text-tertiary)", marginBottom: 7 }}>
+            TRAINING · WEEK {weekNumber}
+          </div>
+          <h1 className="cl-disp" style={{ fontFamily: "var(--font-display)", fontSize: 30, fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>
+            Exercise
+          </h1>
+        </div>
+
+        {/* Check Your Form hero */}
+        <div
+          className="cl-card"
+          style={{ position: "relative", overflow: "hidden", borderRadius: 20, padding: "26px 28px", marginBottom: 20, display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap" }}
+        >
+          <div style={{ position: "absolute", right: -60, top: -60, width: 300, height: 300, background: "radial-gradient(circle, rgba(170, 255, 0, 0.14), transparent 65%)", pointerEvents: "none" }} />
+          <span style={{ position: "relative", flex: "none", width: 62, height: 62, borderRadius: 18, background: "var(--lime-400)", display: "flex", alignItems: "center", justifyContent: "center", color: "#0A0C0F" }}>
+            <Video size={30} />
+          </span>
+          <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
+            <div className="cl-disp" style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>
+              Check Your Form
             </div>
-            <h1 className="cl-disp" style={{ fontFamily: "var(--font-display)", fontSize: 30, fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>
-              Exercise
-            </h1>
+            <div style={{ fontSize: 14, color: "var(--text-secondary)", marginTop: 3 }}>
+              Upload a training clip — AI pose analysis scores every rep, fully on-device.
+            </div>
           </div>
           <button
-            onClick={() => router.push("/?mode=gym")}
-            className="flex items-center gap-2"
+            onClick={handleUploadClick}
             style={{
-              padding: "12px 20px",
-              borderRadius: "var(--radius-md)",
+              position: "relative",
+              flex: "none",
+              display: "flex",
+              alignItems: "center",
+              gap: 9,
+              padding: "14px 26px",
               background: "var(--lime-400)",
               color: "#0A0C0F",
               fontWeight: 700,
-              fontSize: 14,
+              fontSize: 15,
               border: "none",
+              borderRadius: 13,
               cursor: "pointer",
               boxShadow: "var(--shadow-lime-sm)",
             }}
           >
-            <Video size={18} /> Check Form
+            <Upload size={18} /> Upload Video
           </button>
         </div>
 
-        <div className="ex-cols3">
-          {/* LEFT */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            <div className="cl-card" style={{ borderRadius: 18, padding: 24, textAlign: "center" }}>
-              <div style={{ position: "relative", width: stepRingSize, height: stepRingSize, margin: "0 auto 8px" }}>
-                <svg width={stepRingSize} height={stepRingSize} viewBox={`0 0 ${stepRingSize} ${stepRingSize}`}>
-                  <circle cx={stepRingSize / 2} cy={stepRingSize / 2} r={stepR} fill="none" stroke="var(--ring-track)" strokeWidth="11" />
-                  <circle
-                    cx={stepRingSize / 2}
-                    cy={stepRingSize / 2}
-                    r={stepR}
-                    fill="none"
-                    stroke="var(--info)"
-                    strokeWidth="11"
-                    strokeLinecap="round"
-                    strokeDasharray={stepCirc}
-                    strokeDashoffset={stepDash}
-                    transform={`rotate(-90 ${stepRingSize / 2} ${stepRingSize / 2})`}
-                  />
-                </svg>
-                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 26, fontWeight: 700, color: "var(--text-primary)" }}>
-                    {steps.toLocaleString()}
-                  </span>
-                  <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>/ {stepGoal.toLocaleString()} steps</span>
-                </div>
-              </div>
-              <Link href="/profile/google-fit" style={{ fontSize: 12, color: "var(--text-tertiary)", display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <Footprints size={13} style={{ color: "var(--lime-400)" }} /> Connect Google Health to sync steps
-              </Link>
-            </div>
-
+        {showFormCheck && (
+          <div ref={formCheckRef} className="animate-fade-in-up" style={{ marginBottom: 20, scrollMarginTop: 20 }}>
             <FormCheckPanel onResult={() => setAnalysisVersion((version) => version + 1)} />
           </div>
+        )}
 
-          {/* CENTER */}
+        <div className="ex-cols2">
+          {/* MAIN */}
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             <div className="cl-card" style={{ borderRadius: 16, padding: 10 }}>
               <div style={{ display: "flex", gap: 8 }}>
@@ -303,7 +246,7 @@ export default function ExercisePage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {todayWorkout.length === 0 && (
                   <p style={{ fontSize: 13, color: "var(--text-tertiary)", textAlign: "center", padding: 20 }}>
-                    No exercises logged for this day. Use the Muscle Library to log sets.
+                    No exercises logged for this day. Add an exercise from the Muscle Library to log sets.
                   </p>
                 )}
                 {todayWorkout.map((exercise, index) => (
@@ -319,6 +262,24 @@ export default function ExercisePage() {
                     </span>
                   </div>
                 ))}
+                <Link
+                  href="/exercise/library"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    padding: 12,
+                    border: "1.5px dashed var(--border-color)",
+                    borderRadius: 12,
+                    color: "var(--lime-600)",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  <Plus size={16} /> Add Exercise
+                </Link>
               </div>
             </div>
 
@@ -346,156 +307,90 @@ export default function ExercisePage() {
             </div>
           </div>
 
-          {/* RIGHT: Muscle Library */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {logSuccess && (
-              <div className="animate-fade-in-up" style={{ padding: "10px 16px", borderRadius: "var(--radius-md)", background: "rgba(170, 255, 0, 0.12)", border: "1px solid rgba(170, 255, 0, 0.3)", display: "flex", alignItems: "center", gap: 8 }}>
-                <CheckCircle size={16} style={{ color: "var(--lime-400)" }} />
-                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--lime-400)" }}>Logged {logSuccess}!</span>
-              </div>
-            )}
-
-            {logError && (
-              <div className="animate-fade-in-up" style={{ padding: "10px 16px", borderRadius: "var(--radius-md)", background: "rgba(255, 77, 77, 0.1)", border: "1px solid rgba(255, 77, 77, 0.3)", color: "var(--error)", fontSize: 13, fontWeight: 600 }}>
-                {logError}
-              </div>
-            )}
-
-            <div className="cl-card" style={{ borderRadius: 18, padding: 20 }}>
-              <div className="flex items-center justify-between mb-3">
-                <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>Muscle Library</h3>
-                {exercises.length > 0 && (
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-tertiary)" }}>{exercises.length} shown</span>
-                )}
-              </div>
-
-              <div style={{ position: "relative", marginBottom: 12 }}>
-                <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-tertiary)" }} />
-                <input
-                  type="text"
-                  placeholder="Search exercises..."
-                  value={searchQuery}
-                  onChange={(event) => handleSearchChange(event.target.value)}
-                  className="cl-input"
-                  style={{ fontSize: 13, paddingLeft: 36 }}
+          {/* RIGHT RAIL */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            {/* Compact steps card */}
+            <div className="cl-card" style={{ borderRadius: 18, padding: 20, display: "flex", alignItems: "center", gap: 18 }}>
+              <svg width={stepRingSize} height={stepRingSize} viewBox={`0 0 ${stepRingSize} ${stepRingSize}`} style={{ flex: "none" }}>
+                <circle cx={stepRingSize / 2} cy={stepRingSize / 2} r={stepR} fill="none" stroke="var(--ring-track)" strokeWidth="8" />
+                <circle
+                  cx={stepRingSize / 2}
+                  cy={stepRingSize / 2}
+                  r={stepR}
+                  fill="none"
+                  stroke="var(--info)"
+                  strokeWidth="8"
+                  strokeLinecap="round"
+                  strokeDasharray={stepCirc}
+                  strokeDashoffset={stepDash}
+                  transform={`rotate(-90 ${stepRingSize / 2} ${stepRingSize / 2})`}
                 />
-                {isSearching && (
-                  <Loader2 size={16} className="animate-spin" style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: "var(--lime-400)" }} />
+              </svg>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 22, fontWeight: 700, color: "var(--text-primary)", lineHeight: 1 }}>
+                  {steps.toLocaleString()}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4 }}>/ {stepGoal.toLocaleString()} steps</div>
+                {steps > 0 ? (
+                  <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 8 }}>Google Health</div>
+                ) : (
+                  <Link href="/profile/google-fit" style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 8, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <Footprints size={12} style={{ color: "var(--lime-400)" }} /> Connect Google Health
+                  </Link>
                 )}
               </div>
+            </div>
 
-              <div className="flex flex-wrap gap-2 mb-4">
-                {muscleFilters.map((filter) => (
-                  <button
-                    key={filter}
-                    onClick={() => {
-                      setActiveFilter(filter);
-                      fetchExercises(searchQuery, filter);
-                    }}
-                    style={{
-                      padding: "6px 13px",
-                      borderRadius: "var(--radius-full)",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      background: activeFilter === filter ? "var(--lime-400)" : "var(--surface-elevated)",
-                      color: activeFilter === filter ? "#0A0C0F" : "var(--text-secondary)",
-                      border: activeFilter === filter ? "1px solid var(--lime-400)" : "1px solid var(--border-subtle)",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {filter}
-                  </button>
-                ))}
-              </div>
-
-              <div className="space-y-2" style={{ maxHeight: 540, overflowY: "auto" }}>
-                {exercises.length === 0 && !isSearching && (
-                  <p style={{ fontSize: 13, color: "var(--text-tertiary)", textAlign: "center", padding: 20 }}>
-                    No exercises found. Try a different search.
-                  </p>
-                )}
-
-                {exercises.map((exercise) => (
-                  <div key={exercise.id} className="animate-fade-in-up">
-                    <div
-                      className="card-hover flex items-center gap-3"
-                      onClick={() => {
-                        setExpandedId(expandedId === exercise.id ? null : exercise.id);
-                        setLogForm({ sets: 3, reps: 10, weight_lbs: 0 });
-                      }}
-                      style={{
-                        padding: 12,
-                        borderRadius: "var(--radius-md)",
-                        background: expandedId === exercise.id ? "var(--surface-hover)" : "var(--surface-elevated)",
-                        border: expandedId === exercise.id ? "1px solid rgba(170, 255, 0, 0.3)" : "1px solid var(--border-subtle)",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <div style={{ width: 56, height: 56, borderRadius: "var(--radius-sm)", background: "var(--surface-card)", flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        {exercise.gif_url && !imgErrors[exercise.id] ? (
-                          <img
-                            src={exercise.gif_url}
-                            alt={exercise.name}
-                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                            onError={() => setImgErrors((prev) => ({ ...prev, [exercise.id]: true }))}
-                            loading="lazy"
-                          />
-                        ) : (
-                          <Dumbbell size={20} style={{ color: "var(--text-tertiary)" }} />
-                        )}
-                      </div>
-
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", textTransform: "capitalize", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {exercise.name}
-                        </p>
-                        <div className="flex items-center gap-2" style={{ marginTop: 4 }}>
-                          <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: "var(--radius-sm)", background: "rgba(170, 255, 0, 0.1)", color: "var(--lime-400)", fontWeight: 500, textTransform: "capitalize" }}>
-                            {exercise.muscle_group}
-                          </span>
-                          {exercise.equipment && (
-                            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: "var(--radius-sm)", background: "var(--surface-card)", color: "var(--text-tertiary)", fontWeight: 500, textTransform: "capitalize" }}>
-                              {exercise.equipment}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <Link
-                        href={`/exercise/${exercise.id}`}
-                        onClick={(event) => event.stopPropagation()}
-                        aria-label={`Open ${exercise.name}`}
-                        className="btn-icon"
-                        style={{ width: 30, height: 30, border: "none", background: "var(--surface-card)" }}
-                      >
-                        <ChevronRight size={14} style={{ color: "var(--text-tertiary)" }} />
-                      </Link>
-                    </div>
-
-                    {expandedId === exercise.id && (
-                      <div className="animate-fade-in-up" style={{ padding: 14, marginTop: 4, borderRadius: "var(--radius-md)", background: "var(--surface-card)", border: "1px solid var(--border-subtle)" }}>
-                        <div className="grid grid-cols-3 gap-2 mb-3">
-                          <div>
-                            <label style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 500, display: "block", marginBottom: 4 }}>Sets</label>
-                            <input type="number" value={logForm.sets} min={1} onChange={(event) => setLogForm({ ...logForm, sets: Number(event.target.value) })} className="cl-input" style={{ fontSize: 14, padding: "8px 10px", textAlign: "center", fontFamily: "var(--font-mono)" }} />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 500, display: "block", marginBottom: 4 }}>Reps</label>
-                            <input type="number" value={logForm.reps} min={1} onChange={(event) => setLogForm({ ...logForm, reps: Number(event.target.value) })} className="cl-input" style={{ fontSize: 14, padding: "8px 10px", textAlign: "center", fontFamily: "var(--font-mono)" }} />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 500, display: "block", marginBottom: 4 }}>Weight (lbs)</label>
-                            <input type="number" value={logForm.weight_lbs} min={0} onChange={(event) => setLogForm({ ...logForm, weight_lbs: Number(event.target.value) })} className="cl-input" style={{ fontSize: 14, padding: "8px 10px", textAlign: "center", fontFamily: "var(--font-mono)" }} />
-                          </div>
-                        </div>
-                        <button onClick={(event) => { event.stopPropagation(); handleLogSet(exercise); }} disabled={isLogging} className="btn-primary w-full flex items-center justify-center gap-2" style={{ height: 38, fontSize: 13, opacity: isLogging ? 0.6 : 1 }}>
-                          {isLogging ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                          {isLogging ? "Logging..." : "Log Set"}
-                        </button>
-                      </div>
-                    )}
+            {/* Muscle Library teaser */}
+            <div className="cl-card cl-card-hover" style={{ position: "relative", overflow: "hidden", borderRadius: 18, padding: 22 }}>
+              <div style={{ position: "absolute", right: -40, bottom: -40, width: 200, height: 200, background: "radial-gradient(circle, rgba(170, 255, 0, 0.12), transparent 65%)", pointerEvents: "none" }} />
+              <div style={{ position: "relative" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                  <div className="cl-disp" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 17, color: "var(--text-primary)" }}>
+                    Muscle Library
                   </div>
-                ))}
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--lime-600)" }}>
+                    {libraryCounts ? libraryCounts.total.toLocaleString() : "—"}
+                  </span>
+                </div>
+                <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 16 }}>
+                  Every exercise, by muscle group &amp; equipment.
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
+                  {topGroups.length === 0 &&
+                    Array.from({ length: 6 }).map((_, index) => (
+                      <div key={index} style={{ background: "var(--surface-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 11, padding: "10px 6px", textAlign: "center", minHeight: 48 }} />
+                    ))}
+                  {topGroups.map((group) => (
+                    <div key={group.muscle_group} style={{ background: "var(--surface-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 11, padding: "10px 6px", textAlign: "center" }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {capitalize(group.muscle_group)}
+                      </div>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-tertiary)", marginTop: 2 }}>{group.count}</div>
+                    </div>
+                  ))}
+                </div>
+                <Link
+                  href="/exercise/library"
+                  style={{
+                    width: "100%",
+                    padding: 12,
+                    background: "var(--lime-400)",
+                    color: "#0A0C0F",
+                    fontWeight: 700,
+                    fontSize: 14,
+                    border: "none",
+                    borderRadius: 11,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    boxShadow: "var(--shadow-lime-sm)",
+                  }}
+                >
+                  Open Library <ArrowRight size={16} />
+                </Link>
               </div>
             </div>
           </div>

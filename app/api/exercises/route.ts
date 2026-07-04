@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { findExercises } from '../../../lib/server/exercise-db';
+import { countExercises, findExercises } from '../../../lib/server/exercise-db';
 
 export const runtime = 'nodejs';
 
@@ -9,6 +9,14 @@ export async function GET(req: Request) {
     const id = searchParams.get('id')?.trim();
     const query = searchParams.get('query')?.trim();
     const muscle = searchParams.get('muscle')?.trim();
+    const counts = searchParams.get('counts');
+    const limitParam = Number(searchParams.get('limit'));
+
+    // Real library stats (total + per-muscle-group counts)
+    if (counts) {
+      const data = await countExercises();
+      return NextResponse.json({ success: true, data });
+    }
 
     if (id) {
       const [exercise] = await findExercises({ id });
@@ -18,10 +26,15 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: true, data: exercise });
     }
 
+    // Explicit limit (capped) supports the full library grid; defaults unchanged
+    const limit = Number.isFinite(limitParam) && limitParam > 0
+      ? Math.min(limitParam, 200)
+      : query || muscle ? 15 : 10;
+
     const data = await findExercises({
       query: query || undefined,
       muscles: muscle ? [muscle] : undefined,
-      limit: query || muscle ? 15 : 10,
+      limit,
     });
     return NextResponse.json({ success: true, data });
   } catch (error) {

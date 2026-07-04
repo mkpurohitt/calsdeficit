@@ -52,7 +52,7 @@ export default function SignupPage() {
       await updateProfile(userCredential.user, {
         displayName: fullName
       });
-      router.push("/");
+      router.push("/onboarding");
     } catch (err: unknown) {
       const msg = friendlyAuthError(err);
       setError(msg);
@@ -64,7 +64,7 @@ export default function SignupPage() {
     const provider = new GoogleAuthProvider();
     try {
       await signInWithPopup(auth, provider);
-      router.push("/");
+      router.push("/onboarding");
     } catch (err: unknown) {
       setError(friendlyAuthError(err));
     }
@@ -124,16 +124,15 @@ export default function SignupPage() {
         <div style={{ position: "relative" }}>
           {/* brand mark + wordmark */}
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 54 }}>
-            <svg width="30" height="30" viewBox="0 0 512 512">
-              <rect width="512" height="512" rx="120" fill="#13171F" />
-              <path
-                d="M340 178c-20-26-52-42-88-42-62 0-110 50-110 120s48 120 110 120c36 0 68-16 88-42"
-                fill="none"
-                stroke="var(--lime-400)"
-                strokeWidth="52"
-                strokeLinecap="round"
-              />
-              <circle cx="356" cy="256" r="30" fill="var(--lime-400)" />
+            <svg width="32" height="32" viewBox="0 0 100 100" aria-hidden>
+              {/* dark brand panel always uses the lime-disc/white-dot variant */}
+              <mask id="lg-auth-su">
+                <rect width="100" height="100" fill="black" />
+                <circle cx="50" cy="50" r="42" fill="white" />
+                <circle cx="77" cy="23" r="27" fill="black" />
+              </mask>
+              <circle cx="50" cy="50" r="42" fill="var(--lime-400)" mask="url(#lg-auth-su)" />
+              <circle cx="77" cy="23" r="10.5" fill="#FFFFFF" />
             </svg>
             <span
               style={{

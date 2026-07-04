@@ -4,7 +4,7 @@ import AppLayout from "../../components/AppLayout";
 import { Droplet, Camera, Plus, ChevronDown, ChevronUp, Trash2, X, Upload, Loader2, Check, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../lib/AuthContext";
-import { addFoodLog, deleteFoodLog, getDateKey, getDateKeyDaysAgo, getDay, getFoodLogs, getUserGoal, saveDay, saveUserGoal } from "../../lib/user-data";
+import { addFoodLog, deleteFoodLog, getDateKey, getDateKeyDaysAgo, getDay, getFoodLogs, getUserGoal, saveDay } from "../../lib/user-data";
 import { apiFetch } from "../../lib/api-client";
 import { compressImage } from "../../lib/image-compress";
 import FoodScanCard from "../../components/FoodScanCard";
@@ -43,17 +43,11 @@ export default function DietPage() {
   
   const [loading, setLoading] = useState(true);
   const [isOnboarded, setIsOnboarded] = useState(false); 
-  const [userGoals, setUserGoals] = useState<{ daily_calories?: number; protein_g?: number; carbs_g?: number; fat_g?: number } | null>(null);
+  const [userGoals, setUserGoals] = useState<{ daily_calories?: number; protein_g?: number; carbs_g?: number; fat_g?: number; fiber_g?: number; water_ml?: number } | null>(null);
 
   // Weekly calorie data for the bar chart
   const [weeklyData, setWeeklyData] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
   const [streak, setStreak] = useState(0);
-
-  // Form State
-  const [age, setAge] = useState("");
-  const [weight, setWeight] = useState("");
-  const [height, setHeight] = useState("");
-  const [goalType, setGoalType] = useState("Maintain Weight");
 
   const [waterGlasses, setWaterGlasses] = useState(0);
   const [expandedMeal, setExpandedMeal] = useState<string | null>("Breakfast");
@@ -95,6 +89,13 @@ export default function DietPage() {
     
     fetchGoals();
   }, [user]);
+
+  // Goals loaded but none exist → send the user to the dedicated onboarding wizard
+  useEffect(() => {
+    if (!authLoading && user && !loading && !isOnboarded) {
+      router.replace("/onboarding");
+    }
+  }, [authLoading, user, loading, isOnboarded, router]);
 
   // Fetch today's food logs
   const fetchFoodLogs = useCallback(async () => {
@@ -289,61 +290,8 @@ export default function DietPage() {
     });
   };
 
-  // Handle calculation and database save
-  const handleCalculatePlan = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!user) {
-      alert("Error: You are not logged in! Please log in first.");
-      return;
-    }
-
-    const w = parseFloat(weight) || 0;
-    const h = parseFloat(height) || 0;
-    const a = parseInt(age) || 0;
-
-    if (w <= 0 || h <= 0 || a <= 0) {
-      alert("Please enter valid age, weight and height values.");
-      return;
-    }
-
-    // Mifflin-St Jeor formula (male default)
-    const bmr = (10 * w) + (6.25 * h) - (5 * a) + 5;
-    const tdee = Math.round(bmr * 1.55);
-
-    let targetCalories = tdee;
-    if (goalType === "Lose Weight") targetCalories -= 500;
-    if (goalType === "Build Muscle") targetCalories += 300;
-
-    const protein = Math.round((targetCalories * 0.3) / 4);
-    const carbs = Math.round((targetCalories * 0.4) / 4);
-    const fat = Math.round((targetCalories * 0.3) / 9);
-
-    try {
-      const newGoals = {
-        user_id: user.uid,
-        age: parseInt(age),
-        weight_kg: parseFloat(weight),
-        height_cm: parseFloat(height),
-        goal: goalType,
-        daily_calories: targetCalories,
-        protein_g: protein,
-        carbs_g: carbs,
-        fat_g: fat
-      };
-
-      await saveUserGoal(newGoals);
-
-      setUserGoals(newGoals);
-      setIsOnboarded(true);
-
-    } catch (err) {
-      alert("Unexpected Error: " + (err instanceof Error ? err.message : String(err)));
-    }
-  };
-  
   const totalWaterMl = waterGlasses * WATER_GLASS_ML;
-  const waterGoal = WATER_GOAL_ML;
+  const waterGoal = userGoals?.water_ml || WATER_GOAL_ML;
 
   // Dynamic values from food logs
   const consumed = foodLogs.reduce((sum, log) => sum + (log.calories || 0), 0);
@@ -395,54 +343,23 @@ export default function DietPage() {
     { label: "Protein", current: totalProtein, target: userGoals?.protein_g || 150, color: "var(--macro-protein)" },
     { label: "Carbs", current: totalCarbs, target: userGoals?.carbs_g || 250, color: "var(--macro-carbs)" },
     { label: "Fat", current: totalFat, target: userGoals?.fat_g || 65, color: "var(--macro-fat)" },
-    { label: "Fiber", current: totalFiber, target: 30, color: "var(--macro-fiber)" },
+    { label: "Fiber", current: totalFiber, target: userGoals?.fiber_g || 30, color: "var(--macro-fiber)" },
   ];
 
   if (loading) {
     return <AppLayout><div className="p-8 text-center text-[var(--text-secondary)]">Loading dashboard...</div></AppLayout>;
   }
 
-  // ── Onboarding Form ──
+  // ── No goals yet → redirecting to the /onboarding wizard ──
   if (!isOnboarded) {
     return (
       <AppLayout>
-        <div className="flex items-center justify-center min-h-full p-6">
-          <div className="cl-card-elevated w-full max-w-md animate-float-in" style={{ padding: "36px 32px" }}>
-            <h2 style={{ fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
-              Set your daily goals 🎯
-            </h2>
-            <p style={{ fontSize: 14, color: "var(--text-secondary)", marginBottom: 28 }}>
-              We need some details to calculate your daily calories.
-            </p>
-            
-            <form onSubmit={handleCalculatePlan} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="cl-label">Age</label>
-                  <input type="number" required value={age} onChange={(e) => setAge(e.target.value)} placeholder="25" className="cl-input" />
-                </div>
-                <div>
-                  <label className="cl-label">Weight (kg)</label>
-                  <input type="number" required value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="75" className="cl-input" />
-                </div>
-              </div>
-              <div>
-                <label className="cl-label">Height (cm)</label>
-                <input type="number" required value={height} onChange={(e) => setHeight(e.target.value)} placeholder="175" className="cl-input" />
-              </div>
-              <div>
-                <label className="cl-label">Primary Goal</label>
-                <select value={goalType} onChange={(e) => setGoalType(e.target.value)} className="cl-input" style={{ cursor: "pointer" }}>
-                  <option>Lose Weight</option>
-                  <option>Maintain Weight</option>
-                  <option>Build Muscle</option>
-                </select>
-              </div>
-              <button type="submit" className="btn-primary w-full" style={{ height: 52, marginTop: 8 }}>
-                Calculate My Plan
-              </button>
-            </form>
-          </div>
+        <div
+          className="flex flex-col items-center justify-center min-h-full p-6"
+          style={{ gap: 12, color: "var(--text-secondary)" }}
+        >
+          <Loader2 size={26} className="animate-spin" style={{ color: "var(--lime-400)" }} />
+          <span style={{ fontSize: 14 }}>Taking you to onboarding…</span>
         </div>
       </AppLayout>
     );
@@ -482,19 +399,73 @@ export default function DietPage() {
               Today&apos;s Diet
             </h1>
           </div>
+        </div>
+
+        {/* Scan Food hero */}
+        <div
+          className="cl-card"
+          style={{
+            position: "relative",
+            overflow: "hidden",
+            borderRadius: 20,
+            padding: "26px 28px",
+            marginBottom: 20,
+            display: "flex",
+            alignItems: "center",
+            gap: 22,
+            flexWrap: "wrap",
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              right: -60,
+              top: -60,
+              width: 300,
+              height: 300,
+              background: "radial-gradient(circle, rgba(170,255,0,.14), transparent 65%)",
+              pointerEvents: "none",
+            }}
+          />
+          <span
+            style={{
+              position: "relative",
+              flex: "none",
+              width: 62,
+              height: 62,
+              borderRadius: 18,
+              background: "var(--lime-400)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#0A0C0F",
+            }}
+          >
+            <Camera size={30} />
+          </span>
+          <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
+            <div className="cl-disp" style={{ fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>
+              Scan Your Food
+            </div>
+            <div style={{ fontSize: 14, color: "var(--text-secondary)", marginTop: 3 }}>
+              Snap a photo of any meal — AI logs calories and macros instantly.
+            </div>
+          </div>
           <button
             onClick={() => openScanner()}
             style={{
+              position: "relative",
+              flex: "none",
               display: "flex",
               alignItems: "center",
               gap: 9,
-              padding: "12px 20px",
+              padding: "14px 26px",
               background: "var(--lime-400)",
               color: "#0A0C0F",
               fontWeight: 700,
-              fontSize: 14,
+              fontSize: 15,
               border: "none",
-              borderRadius: 12,
+              borderRadius: 13,
               cursor: "pointer",
             }}
           >
@@ -600,39 +571,6 @@ export default function DietPage() {
                   </div>
                 </div>
               </div>
-            </div>
-
-            {/* Scan bar */}
-            <div
-              className="cl-card"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 13,
-                borderRadius: 14,
-                padding: "11px 14px",
-                cursor: "pointer",
-              }}
-              onClick={() => openScanner()}
-            >
-              <span
-                style={{
-                  flex: "none",
-                  width: 38,
-                  height: 38,
-                  borderRadius: 10,
-                  background: "var(--lime-400)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#0A0C0F",
-                }}
-              >
-                <Camera size={19} />
-              </span>
-              <span style={{ flex: 1, fontSize: 15, color: "var(--text-tertiary)" }}>
-                Scan a photo or search foods…
-              </span>
             </div>
 
             {/* Meal journal */}

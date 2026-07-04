@@ -4,7 +4,7 @@
 // the API (never raw chat text) — blueprint context-isolation rule, which is
 // also what keeps the AdSense integration policy-safe.
 import { useEffect, useRef, useState } from "react";
-import { ExternalLink } from "lucide-react";
+import { X } from "lucide-react";
 import { affiliateLinkFor } from "../../lib/config/affiliate-links";
 
 const ADSENSE_CLIENT = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID;
@@ -26,6 +26,7 @@ export default function AdCard({ keywords = [], enabled = true }: AdCardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const pushedRef = useRef(false);
   const [visible, setVisible] = useState(false);
+  const [hidden, setHidden] = useState(false);
 
   const adsenseReady = Boolean(ADSENSE_CLIENT && ADSENSE_SLOT);
   // House fallback: show an affiliate product matching the context until
@@ -57,37 +58,38 @@ export default function AdCard({ keywords = [], enabled = true }: AdCardProps) {
     }
   }, [visible]);
 
-  if (!enabled) return null;
+  if (!enabled || hidden) return null;
   if (!adsenseReady && !fallback) return null;
 
-  return (
-    <div
-      ref={containerRef}
-      className="animate-fade-in-up"
-      style={{
-        marginTop: 12,
-        borderRadius: "var(--radius-lg)",
-        border: "1px solid var(--border-subtle)",
-        background: "var(--surface-card)",
-        overflow: "hidden",
-        maxWidth: 520,
-      }}
-    >
+  // AdSense unit keeps its labelled container; the affiliate fallback uses the
+  // v2 compact "sponsored" row.
+  if (adsenseReady) {
+    return (
       <div
+        ref={containerRef}
+        className="animate-fade-in-up"
         style={{
-          padding: "6px 14px",
-          fontSize: 10,
-          fontWeight: 700,
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
-          color: "var(--text-tertiary)",
-          borderBottom: "1px solid var(--border-subtle)",
+          marginTop: 12,
+          borderRadius: "var(--radius-lg)",
+          border: "1px solid var(--border-subtle)",
+          background: "var(--surface-card)",
+          overflow: "hidden",
+          maxWidth: 520,
         }}
       >
-        Sponsored
-      </div>
-
-      {adsenseReady ? (
+        <div
+          style={{
+            padding: "6px 14px",
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: "var(--text-tertiary)",
+            borderBottom: "1px solid var(--border-subtle)",
+          }}
+        >
+          Sponsored
+        </div>
         <div style={{ padding: 8, minHeight: 90 }}>
           {visible && (
             <ins
@@ -100,37 +102,88 @@ export default function AdCard({ keywords = [], enabled = true }: AdCardProps) {
             />
           )}
         </div>
-      ) : (
-        fallback && (
-          <a
-            href={fallback.url}
-            target="_blank"
-            rel="noopener noreferrer sponsored"
-            className="flex items-center justify-between gap-3"
-            style={{ padding: "14px 16px", textDecoration: "none" }}
-          >
-            <div>
-              <p style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>{fallback.label}</p>
-              <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 3 }}>
-                Recommended for your goals — view on Amazon
-              </p>
-            </div>
+      </div>
+    );
+  }
+
+  return (
+    fallback && (
+      <div
+        ref={containerRef}
+        className="animate-fade-in-up flex items-center"
+        style={{
+          marginTop: 12,
+          gap: 13,
+          padding: "13px 16px",
+          borderRadius: 14,
+          border: "1px solid var(--border-subtle)",
+          background: "var(--surface-card)",
+          maxWidth: 520,
+          opacity: 0.92,
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="flex items-center" style={{ gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{fallback.label}</span>
             <span
-              className="flex items-center gap-1 shrink-0"
+              className="cl-mono"
               style={{
-                padding: "8px 14px",
-                borderRadius: "var(--radius-full)",
-                background: "var(--lime-400)",
-                color: "#0A0C0F",
-                fontSize: 12,
-                fontWeight: 700,
+                flex: "none",
+                fontSize: 9,
+                letterSpacing: ".08em",
+                padding: "2px 7px",
+                borderRadius: 5,
+                background: "var(--surface-elevated)",
+                border: "1px solid var(--border-subtle)",
+                color: "var(--text-tertiary)",
               }}
             >
-              View Offer <ExternalLink size={12} />
+              SPONSORED
             </span>
-          </a>
-        )
-      )}
-    </div>
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--text-tertiary)", marginTop: 2 }}>
+            Recommended for your goals — view on Amazon
+          </div>
+        </div>
+        <a
+          href={fallback.url}
+          target="_blank"
+          rel="noopener noreferrer sponsored"
+          style={{
+            flex: "none",
+            textDecoration: "none",
+            padding: "7px 13px",
+            background: "var(--surface-elevated)",
+            border: "1px solid var(--border-color)",
+            borderRadius: 9,
+            color: "var(--text-secondary)",
+            fontWeight: 600,
+            fontSize: 12,
+            whiteSpace: "nowrap",
+          }}
+        >
+          Learn more
+        </a>
+        <button
+          onClick={() => setHidden(true)}
+          title="Hide this ad"
+          aria-label="Hide this ad"
+          style={{
+            flex: "none",
+            width: 24,
+            height: 24,
+            border: "none",
+            background: "none",
+            color: "var(--text-tertiary)",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <X size={13} />
+        </button>
+      </div>
+    )
   );
 }

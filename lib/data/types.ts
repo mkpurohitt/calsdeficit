@@ -8,6 +8,15 @@ export interface UserGoalRecord {
   protein_g: number;
   carbs_g: number;
   fat_g: number;
+  /* Extended profile captured by onboarding (optional — older records lack them) */
+  gender?: "male" | "female";
+  activity_level?: "sedentary" | "light" | "moderate" | "active" | "very_active";
+  goal_weight_kg?: number;
+  step_goal?: number;
+  fiber_g?: number;
+  water_ml?: number;
+  /** Short AI/template weekly exercise plan (markdown) shown after onboarding */
+  weekly_plan?: string;
 }
 
 export interface FoodLogRecord {

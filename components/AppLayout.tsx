@@ -6,19 +6,18 @@ import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useAuth } from "../lib/AuthContext";
 
-/** Calolean brand mark (from the design export). */
-function BrandMark({ size = 28 }: { size?: number }) {
+/** Calolean brand mark — masked-disc logo from the v2 design export.
+ * Colors come from --logo-disc/--logo-dot so it adapts to light/dark. */
+export function BrandMark({ size = 28, id = "lg" }: { size?: number; id?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 512 512" aria-hidden>
-      <rect width="512" height="512" rx="120" fill="#13171F" />
-      <path
-        d="M340 178c-20-26-52-42-88-42-62 0-110 50-110 120s48 120 110 120c36 0 68-16 88-42"
-        fill="none"
-        stroke="var(--lime-400)"
-        strokeWidth="52"
-        strokeLinecap="round"
-      />
-      <circle cx="356" cy="256" r="30" fill="var(--lime-400)" />
+    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden>
+      <mask id={id}>
+        <rect width="100" height="100" fill="black" />
+        <circle cx="50" cy="50" r="42" fill="white" />
+        <circle cx="77" cy="23" r="27" fill="black" />
+      </mask>
+      <circle cx="50" cy="50" r="42" fill="var(--logo-disc)" mask={`url(#${id})`} />
+      <circle cx="77" cy="23" r="10.5" fill="var(--logo-dot)" />
     </svg>
   );
 }
@@ -67,7 +66,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       >
         {/* Logo */}
         <Link href="/" style={{ display: "flex", alignItems: "center", gap: 11, padding: "6px 10px 26px", textDecoration: "none" }}>
-          <BrandMark size={28} />
+          <BrandMark size={28} id="lg-side" />
           <span className="brand-wordmark" style={{ fontSize: 21, color: "var(--text-primary)" }}>
             calo<span style={{ color: "var(--lime-400)" }}>lean</span>
           </span>
@@ -190,7 +189,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           }}
         >
           <span className="flex items-center" style={{ gap: 9 }}>
-            <BrandMark size={24} />
+            <BrandMark size={24} id="lg-top" />
             <span className="brand-wordmark" style={{ fontSize: 19, color: "var(--text-primary)" }}>
               calo<span style={{ color: "var(--lime-400)" }}>lean</span>
             </span>

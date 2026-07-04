@@ -56,10 +56,14 @@ export default function ShopPage() {
         <div style={{ position: "relative", maxWidth: 680, width: "100%" }}>
           {/* Brand mark + wordmark */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 11, marginBottom: 22 }}>
-            <svg width="30" height="30" viewBox="0 0 512 512" aria-hidden>
-              <rect width="512" height="512" rx="120" fill="#13171F" />
-              <path d="M340 178c-20-26-52-42-88-42-62 0-110 50-110 120s48 120 110 120c36 0 68-16 88-42" fill="none" stroke="var(--lime-400)" strokeWidth="52" strokeLinecap="round" />
-              <circle cx="356" cy="256" r="30" fill="var(--lime-400)" />
+            <svg width="32" height="32" viewBox="0 0 100 100" aria-hidden>
+              <mask id="lg-shop">
+                <rect width="100" height="100" fill="black" />
+                <circle cx="50" cy="50" r="42" fill="white" />
+                <circle cx="77" cy="23" r="27" fill="black" />
+              </mask>
+              <circle cx="50" cy="50" r="42" fill="var(--logo-disc)" mask="url(#lg-shop)" />
+              <circle cx="77" cy="23" r="10.5" fill="var(--logo-dot)" />
             </svg>
             <span className="brand-wordmark" style={{ fontSize: 26 }}>
               <span style={{ color: "var(--text-primary)" }}>calo</span>

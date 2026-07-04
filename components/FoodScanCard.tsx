@@ -1,8 +1,8 @@
 "use client";
-// Blueprint result card: verified-match badge → calories/macros → AI rating →
-// improvement tips with affiliate links → ad card LAST (commercial content
-// never interrupts core value).
-import { BadgeCheck, ExternalLink, Star, TriangleAlert } from "lucide-react";
+// Blueprint result card (v2 design): verified badge → food name/kcal →
+// macro tiles → health score bar → expert review → improvement tips with
+// affiliate product card → ad LAST (commercial content never interrupts value).
+import { BadgeCheck, ExternalLink, TriangleAlert, UtensilsCrossed } from "lucide-react";
 import { affiliateLinkFor } from "../lib/config/affiliate-links";
 import type { FoodScanResult } from "../lib/schemas/food-scan";
 import AdCard from "./ads/AdCard";
@@ -15,16 +15,37 @@ interface FoodScanCardProps {
   showAd?: boolean;
 }
 
+function healthLabel(rating: number): { text: string; color: string } {
+  if (rating >= 8) return { text: "VERY HEALTHY", color: "var(--lime-600)" };
+  if (rating >= 6) return { text: "HEALTHY", color: "var(--lime-600)" };
+  if (rating >= 4) return { text: "OKAY IN MODERATION", color: "var(--warning)" };
+  return { text: "TREAT — ENJOY SPARINGLY", color: "var(--error)" };
+}
+
 export default function FoodScanCard({ scan, adKeywords = [], adsEnabled = true, showAd = true }: FoodScanCardProps) {
   const rating = Math.round(scan.rating_out_of_10 * 10) / 10;
-  const ratingColor = rating >= 7 ? "var(--lime-400)" : rating >= 4 ? "var(--warning)" : "var(--error)";
+  const label = healthLabel(rating);
+  const barColor =
+    rating >= 6
+      ? "linear-gradient(90deg, var(--lime-600), var(--lime-400))"
+      : rating >= 4
+      ? "var(--warning)"
+      : "var(--error)";
+
+  // First suggestion with a whitelisted product becomes the product card
+  const productSuggestion = scan.improvement_suggestions.find(
+    (s) => s.product_keyword && affiliateLinkFor(s.product_keyword)
+  );
+  const productLink = productSuggestion ? affiliateLinkFor(productSuggestion.product_keyword) : null;
+  const textTips = scan.improvement_suggestions.filter((s) => s !== productSuggestion);
 
   return (
-    <div className="space-y-3" style={{ maxWidth: 520 }}>
+    <div style={{ maxWidth: 560, display: "flex", flexDirection: "column", gap: 14 }}>
       {/* Verification badge */}
       <div
         className="inline-flex items-center gap-1.5"
         style={{
+          alignSelf: "flex-start",
           padding: "4px 12px",
           borderRadius: "var(--radius-full)",
           fontSize: 11,
@@ -38,71 +59,111 @@ export default function FoodScanCard({ scan, adKeywords = [], adsEnabled = true,
         {scan.verified ? `DATABASE VERIFIED MATCH · ${scan.source}` : "AI ESTIMATE"}
       </div>
 
-      {/* Name + calories */}
-      <div>
-        <h3 style={{ fontSize: 17, fontWeight: 700, color: "var(--text-primary)", fontFamily: "var(--font-display)" }}>
-          {scan.food_name}
-        </h3>
-        <p style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>{scan.portion}</p>
-      </div>
-      <div style={{ fontFamily: "var(--font-mono)", fontSize: 32, fontWeight: 700, color: "var(--text-primary)" }}>
-        {scan.calories}{" "}
-        <span style={{ fontSize: 13, fontWeight: 400, color: "var(--text-tertiary)" }}>kcal</span>
+      {/* Food name header */}
+      <div className="flex items-center" style={{ gap: 14 }}>
+        <span
+          style={{
+            flex: "none",
+            width: 52,
+            height: 52,
+            borderRadius: 12,
+            background: "var(--surface-card)",
+            border: "1px solid var(--border-subtle)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--lime-600)",
+          }}
+        >
+          <UtensilsCrossed size={24} />
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="cl-disp" style={{ fontWeight: 700, fontSize: 17, color: "var(--text-primary)" }}>
+            {scan.food_name}
+          </div>
+          <div className="cl-mono" style={{ fontSize: 13, color: "var(--lime-600)", marginTop: 2 }}>
+            {scan.calories} kcal · {scan.portion}
+          </div>
+        </div>
       </div>
 
-      {/* Macros */}
-      <div className="grid grid-cols-4 gap-2 text-center">
+      {/* Macro tiles */}
+      <div className="grid grid-cols-4 gap-2">
         {[
           { label: "Protein", value: `${scan.protein_g}g`, color: "var(--macro-protein)" },
-          { label: "Carbs", value: `${scan.carbs_g}g`, color: "var(--macro-carbs)" },
-          { label: "Fat", value: `${scan.fat_g}g`, color: "var(--macro-fat)" },
           { label: "Fiber", value: `${scan.fiber_g}g`, color: "var(--macro-fiber)" },
+          { label: "Fat", value: `${scan.fat_g}g`, color: "var(--macro-fat)" },
+          { label: "Carbs", value: `${scan.carbs_g}g`, color: "var(--macro-carbs)" },
         ].map((m) => (
           <div
             key={m.label}
-            style={{ background: "var(--surface-elevated)", padding: "8px 4px", borderRadius: "var(--radius-sm)" }}
+            style={{
+              background: "var(--surface-card)",
+              border: "1px solid var(--border-subtle)",
+              borderRadius: 12,
+              padding: "11px 8px",
+              textAlign: "center",
+            }}
           >
-            <div style={{ color: m.color, fontWeight: 700, fontSize: 14, fontFamily: "var(--font-mono)" }}>{m.value}</div>
-            <div style={{ color: "var(--text-tertiary)", fontSize: 10, marginTop: 2 }}>{m.label}</div>
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: m.color, margin: "0 auto 6px" }} />
+            <div className="cl-mono" style={{ fontSize: 17, fontWeight: 700, color: "var(--text-primary)" }}>{m.value}</div>
+            <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>{m.label}</div>
           </div>
         ))}
       </div>
 
-      {/* AI rating + review */}
+      {/* Health score */}
       <div
+        className="flex items-center"
         style={{
-          padding: "12px 14px",
-          borderRadius: "var(--radius-md)",
-          background: "var(--surface-elevated)",
+          background: "var(--surface-card)",
           border: "1px solid var(--border-subtle)",
+          borderRadius: 12,
+          padding: "14px 16px",
+          gap: 14,
         }}
       >
-        <div className="flex items-center gap-2" style={{ marginBottom: 6 }}>
-          <Star size={15} style={{ color: ratingColor }} fill={ratingColor} />
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 15, fontWeight: 700, color: ratingColor }}>
-            {rating}/10
+        <div style={{ flex: "none", display: "flex", alignItems: "baseline", gap: 3 }}>
+          <span className="cl-mono" style={{ fontSize: 28, fontWeight: 700, color: rating >= 6 ? "var(--lime-400)" : label.color, lineHeight: 1 }}>
+            {rating}
           </span>
-          <span style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            AI Rating
-          </span>
+          <span className="cl-mono" style={{ fontSize: 13, color: "var(--text-tertiary)" }}>/10</span>
         </div>
-        <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>{scan.health_tip}</p>
+        <div style={{ flex: 1 }}>
+          <div className="flex" style={{ justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Health score</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: label.color }}>{label.text}</span>
+          </div>
+          <div style={{ height: 7, background: "var(--surface-elevated)", borderRadius: 99, overflow: "hidden" }}>
+            <div
+              style={{
+                height: "100%",
+                width: `${Math.min(100, Math.max(0, rating * 10))}%`,
+                background: barColor,
+                borderRadius: 99,
+                transition: "width .6s cubic-bezier(.34,1.56,.64,1)",
+              }}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Improvement suggestions with affiliate links */}
-      {scan.improvement_suggestions.length > 0 && (
+      {/* Expert review */}
+      {scan.health_tip && (
+        <div style={{ fontSize: 14.5, lineHeight: 1.65, color: "var(--text-primary)" }}>{scan.health_tip}</div>
+      )}
+
+      {/* Text-only improvement tips */}
+      {textTips.length > 0 && (
         <div className="space-y-2">
-          <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            Make it better
-          </p>
-          {scan.improvement_suggestions.map((suggestion, index) => {
+          {textTips.map((suggestion, index) => {
             const link = affiliateLinkFor(suggestion.product_keyword);
             return (
               <div
                 key={index}
                 style={{
                   fontSize: 13,
-                  color: "var(--text-primary)",
+                  color: "var(--text-secondary)",
                   lineHeight: 1.6,
                   paddingLeft: 10,
                   borderLeft: "2px solid var(--lime-400)",
@@ -123,6 +184,43 @@ export default function FoodScanCard({ scan, adKeywords = [], adsEnabled = true,
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Product suggestion (affiliate) */}
+      {productSuggestion && productLink && (
+        <div
+          className="flex items-center"
+          style={{
+            background: "var(--surface-card)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: 12,
+            padding: "12px 14px",
+            gap: 13,
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{productLink.label}</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-tertiary)", marginTop: 1 }}>{productSuggestion.tip}</div>
+          </div>
+          <a
+            href={productLink.url}
+            target="_blank"
+            rel="noopener noreferrer sponsored"
+            style={{
+              flex: "none",
+              textDecoration: "none",
+              padding: "8px 14px",
+              border: "1.5px solid var(--lime-400)",
+              borderRadius: 9,
+              color: "var(--lime-600)",
+              fontWeight: 700,
+              fontSize: 12,
+              whiteSpace: "nowrap",
+            }}
+          >
+            View →
+          </a>
         </div>
       )}
 

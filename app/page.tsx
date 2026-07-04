@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef, ChangeEvent, KeyboardEvent } 
 import { useAuth } from "../lib/AuthContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Send, Camera, Video, Paperclip, Trash2, X, PlayCircle, Activity, Loader2, Bot } from "lucide-react";
+import { Send, Camera, Video, Paperclip, Plus, Trash2, X, PlayCircle, Activity, Loader2 } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
 import { auth } from "../lib/firebase";
 import AppLayout from "../components/AppLayout";
@@ -21,6 +21,7 @@ interface DailyStats {
   protein: number;
   proteinGoal: number;
   steps: number;
+  stepGoal: number;
   hasGoal: boolean;
 }
 
@@ -75,6 +76,11 @@ export default function Dashboard() {
         getUserGoal(user.uid),
         getDay(user.uid, todayKey),
       ]);
+      // New users (no plan yet) go through the onboarding wizard first
+      if (!goal?.daily_calories) {
+        router.push("/onboarding");
+        return;
+      }
       const consumed = logs.reduce((a, l) => a + (l.calories || 0), 0);
       const protein = logs.reduce((a, l) => a + (l.protein_g || 0), 0);
       setStats({
@@ -83,13 +89,14 @@ export default function Dashboard() {
         protein: Math.round(protein),
         proteinGoal: goal?.protein_g || 0,
         steps: day?.steps || 0,
+        stepGoal: goal?.step_goal || STEP_GOAL,
         hasGoal: Boolean(goal?.daily_calories),
       });
     } catch (error) {
       console.error("[home] stats load failed", error);
-      setStats({ consumed: 0, calorieGoal: 0, protein: 0, proteinGoal: 0, steps: 0, hasGoal: false });
+      setStats({ consumed: 0, calorieGoal: 0, protein: 0, proteinGoal: 0, steps: 0, stepGoal: STEP_GOAL, hasGoal: false });
     }
-  }, [user]);
+  }, [user, router]);
 
   useEffect(() => {
     loadStats();
@@ -255,53 +262,19 @@ export default function Dashboard() {
       >
         <div className="cl-home-grid">
 
-          {/* ════ Chat panel card ════ */}
+          {/* ════ Chat column (v2: transparent, no card chrome) ════ */}
           <div
             className="cl-chat-card"
             style={{
               display: "flex",
               flexDirection: "column",
               height: "calc(100vh - 108px)",
-              background: "var(--surface-card)",
-              border: "1px solid var(--border-color)",
-              borderRadius: 20,
-              boxShadow: "var(--shadow-card)",
               overflow: "hidden",
+              position: "relative",
             }}
           >
-            {/* Header */}
-            <div
-              className="flex items-center"
-              style={{
-                gap: 11,
-                padding: "16px 22px",
-                borderBottom: "1px solid var(--border-subtle)",
-              }}
-            >
-              <span
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 10,
-                  background: "linear-gradient(135deg, var(--lime-400), #72B800)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#0A0C0F",
-                  flex: "none",
-                }}
-              >
-                <Bot size={18} />
-              </span>
-              <div style={{ flex: 1 }}>
-                <div className="cl-disp" style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)" }}>
-                  CalAI
-                </div>
-                <div className="flex items-center" style={{ gap: 6, fontSize: 12, color: "var(--text-tertiary)" }}>
-                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--lime-400)", boxShadow: "var(--shadow-lime-sm)" }} />
-                  Online · powered by your data
-                </div>
-              </div>
+            {/* Floating chat actions */}
+            <div style={{ position: "absolute", top: 0, right: 4, display: "flex", gap: 8, zIndex: 5 }}>
               <button
                 onClick={handleReset}
                 className="btn-icon"
@@ -325,7 +298,7 @@ export default function Dashboard() {
             {/* Messages */}
             <div
               className="flex-1 overflow-y-auto"
-              style={{ padding: "24px 22px", display: "flex", flexDirection: "column", gap: 16 }}
+              style={{ padding: "8px 4px 24px", display: "flex", flexDirection: "column", gap: 16 }}
             >
               {messages.map((msg, idx) => (
                 <div
@@ -486,8 +459,8 @@ export default function Dashboard() {
             </div>
 
             {/* Composer */}
-            <div style={{ borderTop: "1px solid var(--border-subtle)", padding: "16px 22px" }}>
-              {/* Quick-action chips */}
+            <div style={{ padding: "16px 4px 0" }}>
+              {/* Mode chips (kept for the food/gym pipelines) */}
               <div className="flex" style={{ gap: 9, marginBottom: 12, flexWrap: "wrap" }}>
                 <button
                   onClick={() => handleModeSwitch('food')}
@@ -544,17 +517,17 @@ export default function Dashboard() {
                     width: 34,
                     height: 34,
                     borderRadius: 9,
-                    border: "none",
-                    background: "transparent",
-                    color: "var(--text-tertiary)",
+                    border: "1px solid var(--border-color)",
+                    background: "var(--surface-card)",
+                    color: "var(--text-secondary)",
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                   }}
-                  title="Attach file"
+                  title="Attach a photo or video"
                 >
-                  {mode === 'gym' ? <Video size={19} /> : mode === 'food' ? <Camera size={19} /> : <Paperclip size={19} />}
+                  {mode === 'gym' ? <Video size={18} /> : mode === 'food' ? <Camera size={18} /> : <Plus size={18} />}
                   <input
                     type="file"
                     className="hidden"
@@ -662,7 +635,7 @@ export default function Dashboard() {
                     <span style={{ fontSize: 14, color: "var(--text-secondary)" }}>/ {stats.calorieGoal.toLocaleString()}</span>
                   </div>
                 ) : (
-                  <Link href="/diet" style={{ display: "inline-block", marginBottom: 18, fontSize: 14, fontWeight: 600, color: "var(--lime-600)" }}>
+                  <Link href="/onboarding" style={{ display: "inline-block", marginBottom: 18, fontSize: 14, fontWeight: 600, color: "var(--lime-600)" }}>
                     Set your daily goal →
                   </Link>
                 )}
@@ -679,10 +652,10 @@ export default function Dashboard() {
                   <div>
                     <div className="flex" style={{ justifyContent: "space-between", fontSize: 12, color: "var(--text-secondary)", marginBottom: 5 }}>
                       <span>Steps</span>
-                      <span className="cl-mono">{(stats?.steps || 0).toLocaleString()} / {STEP_GOAL.toLocaleString()}</span>
+                      <span className="cl-mono">{(stats?.steps || 0).toLocaleString()} / {(stats?.stepGoal ?? STEP_GOAL).toLocaleString()}</span>
                     </div>
                     <div style={{ height: 6, background: "var(--surface-elevated)", borderRadius: 99, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${Math.min(100, Math.round(((stats?.steps || 0) / STEP_GOAL) * 100))}%`, background: "var(--info)", borderRadius: 99, transition: "width .6s ease" }} />
+                      <div style={{ height: "100%", width: `${Math.min(100, Math.round(((stats?.steps || 0) / (stats?.stepGoal ?? STEP_GOAL)) * 100))}%`, background: "var(--info)", borderRadius: 99, transition: "width .6s ease" }} />
                     </div>
                   </div>
                 </div>
