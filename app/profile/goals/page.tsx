@@ -7,6 +7,7 @@ import { getUserGoal, saveUserGoal } from "../../../lib/user-data";
 import { apiFetch } from "../../../lib/api-client";
 import {
   ACTIVITY_LABELS,
+  ageFromBirthDate,
   calculatePlan,
   type ActivityLevel,
   type Gender,
@@ -15,15 +16,18 @@ import {
 import { Check, Loader2, RefreshCw, Sparkles } from "lucide-react";
 
 const GOALS: GoalType[] = ["Lose Weight", "Maintain Weight", "Gain Muscle"];
+const WORKOUT_DAY_OPTIONS = [2, 3, 4, 5, 6, 7];
 
 interface GoalForm {
   gender: Gender;
+  birth_date: string;
   age: number;
   height_cm: number;
   weight_kg: number;
   goal_weight_kg: number | "";
   goal: GoalType;
   activity_level: ActivityLevel;
+  workout_days: number;
   daily_calories: number;
   protein_g: number;
   carbs_g: number;
@@ -45,12 +49,14 @@ export default function GoalsPage() {
     getUserGoal(user.uid).then((goal) => {
       setForm({
         gender: (goal?.gender as Gender) || "male",
+        birth_date: goal?.birth_date ?? "",
         age: goal?.age ?? 25,
         height_cm: goal?.height_cm ?? 170,
         weight_kg: goal?.weight_kg ?? 70,
         goal_weight_kg: goal?.goal_weight_kg ?? "",
         goal: GOALS.includes(goal?.goal as GoalType) ? (goal?.goal as GoalType) : "Maintain Weight",
         activity_level: (goal?.activity_level as ActivityLevel) || "moderate",
+        workout_days: goal?.workout_days ?? 4,
         daily_calories: goal?.daily_calories ?? 2000,
         protein_g: goal?.protein_g ?? 120,
         carbs_g: goal?.carbs_g ?? 220,
@@ -70,7 +76,7 @@ export default function GoalsPage() {
     if (!form) return;
     const computed = calculatePlan({
       gender: form.gender,
-      age: form.age,
+      age: form.birth_date ? ageFromBirthDate(form.birth_date) : form.age,
       height_cm: form.height_cm,
       weight_kg: form.weight_kg,
       goal_weight_kg: form.goal_weight_kg === "" ? undefined : form.goal_weight_kg,
@@ -101,13 +107,14 @@ export default function GoalsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           gender: form.gender,
-          age: form.age,
+          age: form.birth_date ? ageFromBirthDate(form.birth_date) : form.age,
           height_cm: form.height_cm,
           weight_kg: form.weight_kg,
           goal: form.goal,
           activity_level: form.activity_level,
           daily_calories: form.daily_calories,
           protein_g: form.protein_g,
+          workout_days: form.workout_days,
         }),
       });
       const data = await res.json();
@@ -125,7 +132,7 @@ export default function GoalsPage() {
     try {
       await saveUserGoal({
         user_id: user.uid,
-        age: form.age,
+        age: form.birth_date ? ageFromBirthDate(form.birth_date) : form.age,
         weight_kg: form.weight_kg,
         height_cm: form.height_cm,
         goal: form.goal,
@@ -138,6 +145,15 @@ export default function GoalsPage() {
         goal_weight_kg: form.goal_weight_kg === "" ? undefined : form.goal_weight_kg,
         step_goal: form.step_goal,
         fiber_g: form.fiber_g,
+        birth_date: form.birth_date || undefined,
+        workout_days: form.workout_days,
+        // meal split follows the (possibly manually edited) daily calories
+        meal_targets: {
+          breakfast: Math.round(form.daily_calories * 0.25),
+          lunch: Math.round(form.daily_calories * 0.35),
+          dinner: Math.round(form.daily_calories * 0.3),
+          snacks: Math.round(form.daily_calories * 0.1),
+        },
         weekly_plan: form.weekly_plan,
       });
       setSaved(true);
@@ -214,7 +230,18 @@ export default function GoalsPage() {
           </div>
 
           <div className="goals-grid4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 14 }}>
-            {numField("Age", "age")}
+            <label style={{ display: "block" }}>
+              <span className="cl-label">
+                Birth date{form.birth_date ? ` (${ageFromBirthDate(form.birth_date)}y)` : ""}
+              </span>
+              <input
+                type="date"
+                value={form.birth_date}
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => set("birth_date", e.target.value)}
+                className="cl-input"
+              />
+            </label>
             {numField("Height (cm)", "height_cm")}
             {numField("Weight (kg)", "weight_kg", 0.5)}
             {numField("Target weight (kg)", "goal_weight_kg", 0.5)}
@@ -239,6 +266,32 @@ export default function GoalsPage() {
                   }}
                 >
                   {g}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 18 }}>
+            <span className="cl-label">Workout days / week</span>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {WORKOUT_DAY_OPTIONS.map((d) => (
+                <button
+                  key={d}
+                  onClick={() => set("workout_days", d)}
+                  className="cl-mono"
+                  style={{
+                    width: 44,
+                    height: 40,
+                    borderRadius: 11,
+                    fontSize: 15,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    background: form.workout_days === d ? "var(--lime-400)" : "var(--surface-elevated)",
+                    color: form.workout_days === d ? "#0A0C0F" : "var(--text-secondary)",
+                    border: form.workout_days === d ? "1px solid var(--lime-400)" : "1px solid var(--border-color)",
+                  }}
+                >
+                  {d}
                 </button>
               ))}
             </div>

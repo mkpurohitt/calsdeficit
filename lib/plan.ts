@@ -7,6 +7,8 @@
 export type Gender = "male" | "female";
 export type ActivityLevel = "sedentary" | "light" | "moderate" | "active" | "very_active";
 export type GoalType = "Lose Weight" | "Maintain Weight" | "Gain Muscle";
+export type HeightUnit = "cm" | "ft";
+export type WeightUnit = "kg" | "lbs";
 
 export interface PlanInput {
   gender: Gender;
@@ -16,6 +18,14 @@ export interface PlanInput {
   goal_weight_kg?: number;
   goal: GoalType;
   activity_level: ActivityLevel;
+}
+
+/** Per-meal calorie targets derived from the daily total. */
+export interface MealTargets {
+  breakfast: number;
+  lunch: number;
+  dinner: number;
+  snacks: number;
 }
 
 export interface PlanResult {
@@ -28,6 +38,41 @@ export interface PlanResult {
   fiber_g: number;
   step_goal: number;
   water_ml: number;
+  meal_targets: MealTargets;
+}
+
+/* ── Unit conversions (canonical storage is metric) ────────────────────── */
+
+export const CM_PER_IN = 2.54;
+export const KG_PER_LB = 0.45359237;
+
+export function ftInToCm(feet: number, inches: number): number {
+  return Math.round((feet * 12 + inches) * CM_PER_IN);
+}
+
+export function cmToFtIn(cm: number): { feet: number; inches: number } {
+  const totalIn = Math.round(cm / CM_PER_IN);
+  return { feet: Math.floor(totalIn / 12), inches: totalIn % 12 };
+}
+
+export function lbsToKg(lbs: number): number {
+  return Math.round(lbs * KG_PER_LB * 10) / 10;
+}
+
+export function kgToLbs(kg: number): number {
+  return Math.round((kg / KG_PER_LB) * 10) / 10;
+}
+
+/** Age in full years from an ISO birth date (yyyy-mm-dd). */
+export function ageFromBirthDate(birthDate: string, today: Date = new Date()): number {
+  const dob = new Date(birthDate);
+  if (Number.isNaN(dob.getTime())) return 0;
+  let age = today.getFullYear() - dob.getFullYear();
+  const beforeBirthday =
+    today.getMonth() < dob.getMonth() ||
+    (today.getMonth() === dob.getMonth() && today.getDate() < dob.getDate());
+  if (beforeBirthday) age -= 1;
+  return age;
 }
 
 export const ACTIVITY_MULTIPLIERS: Record<ActivityLevel, number> = {
@@ -75,40 +120,67 @@ export function calculatePlan(input: PlanInput): PlanResult {
   // Water: ~35 ml per kg, rounded to glass (250 ml), min 2000
   const water_ml = Math.max(2000, Math.round((weight_kg * 35) / 250) * 250);
 
-  return { bmr, tdee, daily_calories, protein_g, carbs_g, fat_g, fiber_g, step_goal, water_ml };
+  // Meal split of the daily calories: 25 / 35 / 30 / 10
+  const meal_targets: MealTargets = {
+    breakfast: Math.round(daily_calories * 0.25),
+    lunch: Math.round(daily_calories * 0.35),
+    dinner: Math.round(daily_calories * 0.3),
+    snacks: Math.round(daily_calories * 0.1),
+  };
+
+  return { bmr, tdee, daily_calories, protein_g, carbs_g, fat_g, fiber_g, step_goal, water_ml, meal_targets };
 }
 
-/** Fallback weekly plan when the AI endpoint is unavailable. */
-export function templateWeeklyPlan(goal: GoalType): string {
-  if (goal === "Lose Weight") {
+/**
+ * Detailed fallback weekly split (with exercises/sets) when the AI endpoint
+ * is unavailable. Chooses a structure by how many days the user can train.
+ */
+export function templateWeeklyPlan(goal: GoalType, workoutDays: number = 4): string {
+  const cardio =
+    goal === "Lose Weight" ? "30–40 min brisk cardio + 10k steps" :
+    goal === "Gain Muscle" ? "20 min easy cardio + 7k steps" :
+    "30 min cardio you enjoy + 8k steps";
+
+  if (workoutDays <= 3) {
     return [
-      "**Mon** — Full-body strength (45 min) + 10k steps",
-      "**Tue** — Brisk walk / cycle 30–40 min",
-      "**Wed** — Upper-body strength + core",
-      "**Thu** — Active recovery: walk, stretch",
-      "**Fri** — Lower-body strength",
-      "**Sat** — Cardio you enjoy (45 min)",
-      "**Sun** — Rest + meal prep",
+      "**Mon — Full Body A** · Squat 3×8 · Bench Press 3×8 · Barbell Row 3×10 · Plank 3×45s",
+      `**Tue — Active recovery** · ${cardio}`,
+      "**Wed — Full Body B** · Deadlift 3×6 · Overhead Press 3×8 · Lat Pulldown 3×10 · Lunge 3×10",
+      "**Thu — Rest** · stretch 10 min",
+      "**Fri — Full Body C** · Leg Press 3×10 · Incline DB Press 3×10 · Cable Row 3×12 · Biceps Curl 3×12",
+      `**Sat — Cardio** · ${cardio}`,
+      "**Sun — Rest** · meal prep",
     ].join("\n");
   }
-  if (goal === "Gain Muscle") {
+  if (workoutDays === 4) {
     return [
-      "**Mon** — Push: chest, shoulders, triceps",
-      "**Tue** — Pull: back, biceps",
-      "**Wed** — Legs + core",
-      "**Thu** — Rest",
-      "**Fri** — Upper body (heavy)",
-      "**Sat** — Lower body + accessories",
-      "**Sun** — Rest, 7k steps",
+      "**Mon — Upper** · Bench Press 4×8 · Barbell Row 4×8 · Overhead Press 3×10 · Biceps Curl 3×12 · Triceps Pushdown 3×12",
+      "**Tue — Lower** · Squat 4×8 · Romanian Deadlift 3×10 · Leg Press 3×12 · Calf Raise 4×15 · Plank 3×45s",
+      `**Wed — Active recovery** · ${cardio}`,
+      "**Thu — Upper** · Incline DB Press 4×10 · Lat Pulldown 4×10 · Lateral Raise 3×15 · Hammer Curl 3×12",
+      "**Fri — Lower** · Deadlift 3×6 · Lunge 3×10 · Leg Curl 3×12 · Hanging Leg Raise 3×12",
+      `**Sat — Cardio** · ${cardio}`,
+      "**Sun — Rest** · stretch + meal prep",
+    ].join("\n");
+  }
+  if (workoutDays === 5) {
+    return [
+      "**Mon — Push** · Bench Press 4×8 · Overhead Press 3×10 · Incline DB Press 3×10 · Lateral Raise 3×15 · Triceps Pushdown 3×12",
+      "**Tue — Pull** · Deadlift 3×6 · Lat Pulldown 4×10 · Cable Row 3×12 · Face Pull 3×15 · Biceps Curl 3×12",
+      "**Wed — Legs** · Squat 4×8 · Leg Press 3×12 · Leg Curl 3×12 · Calf Raise 4×15 · Plank 3×45s",
+      "**Thu — Upper** · Incline Bench 3×10 · Barbell Row 3×10 · Lateral Raise 3×15 · Curls + Extensions 3×12",
+      "**Fri — Lower** · Romanian Deadlift 3×10 · Lunge 3×10 · Hip Thrust 3×12 · Hanging Leg Raise 3×12",
+      `**Sat — Cardio** · ${cardio}`,
+      "**Sun — Rest** · stretch + meal prep",
     ].join("\n");
   }
   return [
-    "**Mon** — Full-body strength (40 min)",
-    "**Tue** — 8k steps + mobility",
-    "**Wed** — Upper-body strength",
-    "**Thu** — Cardio 30 min",
-    "**Fri** — Lower-body strength",
-    "**Sat** — Fun activity: hike, sport, swim",
-    "**Sun** — Rest",
+    "**Mon — Push** · Bench Press 4×8 · Overhead Press 3×10 · Incline DB Press 3×10 · Lateral Raise 3×15 · Triceps Pushdown 3×12",
+    "**Tue — Pull** · Barbell Row 4×8 · Lat Pulldown 4×10 · Cable Row 3×12 · Face Pull 3×15 · Biceps Curl 3×12",
+    "**Wed — Legs** · Squat 4×8 · Romanian Deadlift 3×10 · Leg Press 3×12 · Calf Raise 4×15",
+    "**Thu — Push** · Incline Bench 4×10 · Arnold Press 3×10 · Dips 3×10 · Lateral Raise 3×15",
+    "**Fri — Pull** · Deadlift 3×6 · Pull-Up 4×AMRAP · Seated Row 3×12 · Hammer Curl 3×12",
+    "**Sat — Legs + Core** · Front Squat 3×8 · Lunge 3×10 · Leg Curl 3×12 · Hanging Leg Raise 3×15",
+    `**Sun — Rest** · ${cardio}`,
   ].join("\n");
 }

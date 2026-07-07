@@ -3,9 +3,8 @@ import { useState, useEffect, useCallback, useRef, ChangeEvent, KeyboardEvent } 
 import { useAuth } from "../lib/AuthContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Send, Camera, Video, Paperclip, Plus, Trash2, X, PlayCircle, Activity, Loader2 } from "lucide-react";
+import { Send, Camera, Video, Paperclip, Plus, X, PlayCircle, Activity, Loader2 } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
-import { auth } from "../lib/firebase";
 import AppLayout from "../components/AppLayout";
 import AdCard from "../components/ads/AdCard";
 import FoodScanCard from "../components/FoodScanCard";
@@ -122,18 +121,6 @@ export default function Dashboard() {
   const handleModeSwitch = (newMode: 'food' | 'gym') => {
     setMode((current) => (current === newMode ? 'chat' : newMode));
     setFile(null);
-  };
-
-  const handleReset = () => {
-    setMessages(INITIAL_MESSAGES);
-    setInput("");
-    setFile(null);
-    setMode("chat");
-  };
-
-  const handleLogout = () => {
-    auth.signOut();
-    router.push("/login");
   };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -273,28 +260,6 @@ export default function Dashboard() {
               position: "relative",
             }}
           >
-            {/* Floating chat actions */}
-            <div style={{ position: "absolute", top: 0, right: 4, display: "flex", gap: 8, zIndex: 5 }}>
-              <button
-                onClick={handleReset}
-                className="btn-icon"
-                aria-label="Reset chat"
-                title="Reset chat"
-                style={{ width: 36, height: 36 }}
-              >
-                <Trash2 size={16} />
-              </button>
-              <button
-                onClick={handleLogout}
-                className="btn-icon"
-                aria-label="Log out"
-                title="Log out"
-                style={{ width: 36, height: 36 }}
-              >
-                <X size={16} />
-              </button>
-            </div>
-
             {/* Messages */}
             <div
               className="flex-1 overflow-y-auto"

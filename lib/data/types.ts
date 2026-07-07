@@ -15,7 +15,16 @@ export interface UserGoalRecord {
   step_goal?: number;
   fiber_g?: number;
   water_ml?: number;
-  /** Short AI/template weekly exercise plan (markdown) shown after onboarding */
+  /** ISO yyyy-mm-dd; `age` stays derived for calculations */
+  birth_date?: string;
+  /** Days per week the user can train (drives the split structure) */
+  workout_days?: number;
+  /** Display-unit preferences; storage stays metric */
+  height_unit?: "cm" | "ft";
+  weight_unit?: "kg" | "lbs";
+  /** Per-meal calorie targets derived from daily_calories */
+  meal_targets?: { breakfast: number; lunch: number; dinner: number; snacks: number };
+  /** Detailed AI/template weekly exercise plan (markdown) shown after onboarding */
   weekly_plan?: string;
 }
 

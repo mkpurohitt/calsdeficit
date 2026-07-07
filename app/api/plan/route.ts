@@ -16,13 +16,14 @@ export async function POST(req: Request) {
     const user = await requireUser(req);
     if (user instanceof NextResponse) return user;
 
-    const { gender, age, height_cm, weight_kg, goal, activity_level, daily_calories, protein_g } = await req.json();
+    const { gender, age, height_cm, weight_kg, goal, activity_level, daily_calories, protein_g, workout_days } = await req.json();
     const goalType = (['Lose Weight', 'Maintain Weight', 'Gain Muscle'].includes(goal) ? goal : 'Maintain Weight') as GoalType;
+    const days = Math.min(7, Math.max(2, Number(workout_days) || 4));
 
     try {
-      const prompt = `Create a 7-day weekly exercise plan for this user. Output ONLY the plan as 7 markdown lines, one per day, format: "**Mon** — <workout>". No intro, no outro.
+      const prompt = `Create a detailed 7-day training plan for this user, who can do ${days} workout days per week (the rest are rest/active-recovery days). Output ONLY the plan as exactly 7 markdown lines, one per day, format: "**Mon — <focus>** · <Exercise> <sets>×<reps> · <Exercise> <sets>×<reps> · ..." (3-5 exercises with sets×reps on training days; short activity note on rest days). No intro, no outro.
 User: ${gender}, ${age}y, ${height_cm}cm, ${weight_kg}kg, goal: ${goalType}, activity: ${activity_level}, target ${daily_calories} kcal/day, ${protein_g}g protein.
-Make it specific (muscle groups / activity + duration), realistic for their activity level, with adequate rest days.`;
+Use well-known gym exercises, a sensible split for ${days} days (full-body / upper-lower / push-pull-legs as appropriate), and adequate recovery.`;
 
       const result = await genai().models.generateContent({
         model: chatModelId(),
@@ -33,10 +34,10 @@ Make it specific (muscle groups / activity + duration), realistic for their acti
       if (text && text.split('\n').filter((l) => l.includes('**')).length >= 5) {
         return NextResponse.json({ success: true, plan: text, source: 'ai' });
       }
-      return NextResponse.json({ success: true, plan: templateWeeklyPlan(goalType), source: 'template' });
+      return NextResponse.json({ success: true, plan: templateWeeklyPlan(goalType, days), source: 'template' });
     } catch (aiError) {
       console.error('[Plan API] AI generation failed, using template:', aiError);
-      return NextResponse.json({ success: true, plan: templateWeeklyPlan(goalType), source: 'template' });
+      return NextResponse.json({ success: true, plan: templateWeeklyPlan(goalType, days), source: 'template' });
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Plan generation failed.';

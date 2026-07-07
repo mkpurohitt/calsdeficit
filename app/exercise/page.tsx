@@ -7,7 +7,8 @@ import FormCheckPanel from "../../components/FormCheckPanel";
 import { useAuth } from "../../lib/AuthContext";
 import { getDateKey, getDateKeyDaysAgo, getDay, getFormAnalyses, getUserGoal, getWorkoutLogs } from "../../lib/user-data";
 import { STEP_GOAL } from "../../lib/config/app";
-import { ArrowRight, ChevronRight, Footprints, Plus, Upload, Video } from "lucide-react";
+import { ArrowRight, BicepsFlexed, ChevronRight, Dumbbell, Footprints, Grip, Plus, Shield, Target, Upload, Video, Zap } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 interface WorkoutDisplayItem {
   name: string;
@@ -22,6 +23,18 @@ interface LibraryCounts {
 }
 
 const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+
+/** Symbol per muscle group for the library teaser tiles. */
+function muscleIconFor(group: string): LucideIcon {
+  const g = group.toLowerCase();
+  if (g.includes("pector") || g.includes("chest")) return Shield;
+  if (g.includes("lat") || g.includes("back") || g.includes("trap")) return Grip;
+  if (g.includes("quad") || g.includes("hamstring") || g.includes("glute") || g.includes("calv") || g.includes("adductor") || g.includes("abductor") || g.includes("leg")) return Footprints;
+  if (g.includes("bicep") || g.includes("tricep") || g.includes("forearm") || g.includes("arm")) return BicepsFlexed;
+  if (g.includes("delt") || g.includes("shoulder")) return Zap;
+  if (g.includes("ab") || g.includes("core") || g.includes("spine") || g.includes("waist")) return Target;
+  return Dumbbell;
+}
 
 export default function ExercisePage() {
   const { user } = useAuth() as { user: { uid?: string } | null };
@@ -139,9 +152,12 @@ export default function ExercisePage() {
     <AppLayout>
       <style>{`
         .ex-cols2 { display: grid; grid-template-columns: minmax(0,1fr) 336px; gap: 20px; align-items: start; }
-        @media (max-width: 860px) { .ex-cols2 { grid-template-columns: 1fr; } }
+        @media (max-width: 860px) {
+          .ex-cols2 { grid-template-columns: 1fr; }
+          .ex-wrap { padding: 20px 16px 40px !important; }
+        }
       `}</style>
-      <div style={{ padding: "30px 38px 48px", maxWidth: 1380, margin: "0 auto" }}>
+      <div className="ex-wrap" style={{ padding: "30px 38px 48px", maxWidth: 1380, margin: "0 auto" }}>
         <div style={{ marginBottom: 24 }}>
           <div className="cl-mono" style={{ fontFamily: "var(--font-mono)", fontSize: 12, letterSpacing: "0.12em", color: "var(--text-tertiary)", marginBottom: 7 }}>
             TRAINING · WEEK {weekNumber}
@@ -361,14 +377,17 @@ export default function ExercisePage() {
                     Array.from({ length: 6 }).map((_, index) => (
                       <div key={index} style={{ background: "var(--surface-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 11, padding: "10px 6px", textAlign: "center", minHeight: 48 }} />
                     ))}
-                  {topGroups.map((group) => (
-                    <div key={group.muscle_group} style={{ background: "var(--surface-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 11, padding: "10px 6px", textAlign: "center" }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {capitalize(group.muscle_group)}
+                  {topGroups.map((group) => {
+                    const MuscleIcon = muscleIconFor(group.muscle_group);
+                    return (
+                      <div key={group.muscle_group} style={{ background: "var(--surface-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 11, padding: "10px 6px", textAlign: "center" }}>
+                        <MuscleIcon size={16} style={{ color: "var(--lime-600)", margin: "0 auto 4px", display: "block" }} />
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {capitalize(group.muscle_group)}
+                        </div>
                       </div>
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-tertiary)", marginTop: 2 }}>{group.count}</div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 <Link
                   href="/exercise/library"

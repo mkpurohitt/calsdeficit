@@ -85,8 +85,12 @@ export default function MuscleLibraryPage() {
         @media (max-width: 1180px) { .lib-grid { grid-template-columns: 1fr 1fr; } }
         @media (max-width: 720px) { .lib-grid { grid-template-columns: 1fr; } }
         .lib-head { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
+        @media (max-width: 860px) {
+          .lib-wrap { padding: 20px 16px 40px !important; }
+          .lib-search { min-width: 100% !important; }
+        }
       `}</style>
-      <div style={{ padding: "30px 38px 48px", maxWidth: 1380, margin: "0 auto" }}>
+      <div className="lib-wrap" style={{ padding: "30px 38px 48px", maxWidth: 1380, margin: "0 auto" }}>
         {/* Header */}
         <div className="lib-head">
           <Link
@@ -116,6 +120,7 @@ export default function MuscleLibraryPage() {
             </h1>
           </div>
           <div
+            className="lib-search"
             style={{
               flex: "none",
               display: "flex",
