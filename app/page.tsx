@@ -614,13 +614,19 @@ export default function Dashboard() {
                       <div style={{ height: "100%", width: `${stats?.proteinGoal ? Math.min(100, Math.round((stats.protein / stats.proteinGoal) * 100)) : 0}%`, background: "var(--macro-protein)", borderRadius: 99, transition: "width .6s ease" }} />
                     </div>
                   </div>
-                  <div>
-                    <div className="flex" style={{ justifyContent: "space-between", fontSize: 12, color: "var(--text-secondary)", marginBottom: 5 }}>
-                      <span>Steps</span>
-                      <span className="cl-mono">{(stats?.steps || 0).toLocaleString()} / {(stats?.stepGoal ?? STEP_GOAL).toLocaleString()}</span>
+                  {/* Steps — greyed out until the mobile app ships step counting */}
+                  <div aria-disabled="true" style={{ userSelect: "none" }}>
+                    <div style={{ opacity: 0.45, filter: "grayscale(1)", pointerEvents: "none" }}>
+                      <div className="flex" style={{ justifyContent: "space-between", fontSize: 12, color: "var(--text-secondary)", marginBottom: 5 }}>
+                        <span>Steps</span>
+                        <span className="cl-mono">{(stats?.steps || 0).toLocaleString()} / {(stats?.stepGoal ?? STEP_GOAL).toLocaleString()}</span>
+                      </div>
+                      <div style={{ height: 6, background: "var(--surface-elevated)", borderRadius: 99, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${Math.min(100, Math.round(((stats?.steps || 0) / (stats?.stepGoal ?? STEP_GOAL)) * 100))}%`, background: "var(--info)", borderRadius: 99 }} />
+                      </div>
                     </div>
-                    <div style={{ height: 6, background: "var(--surface-elevated)", borderRadius: 99, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${Math.min(100, Math.round(((stats?.steps || 0) / (stats?.stepGoal ?? STEP_GOAL)) * 100))}%`, background: "var(--info)", borderRadius: 99, transition: "width .6s ease" }} />
+                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 5 }}>
+                      To count your steps, download our app — coming soon.
                     </div>
                   </div>
                 </div>

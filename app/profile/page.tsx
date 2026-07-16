@@ -9,7 +9,6 @@ import { auth } from "../../lib/firebase";
 import { apiFetch } from "../../lib/api-client";
 import {
   getFoodLogs,
-  getDay,
   getDateKey,
   getDateKeyDaysAgo,
   getNotificationPreferences,
@@ -35,7 +34,6 @@ export default function ProfilePage() {
   const [promptLimit, setPromptLimit] = useState(10);
   const [tier, setTier] = useState<Tier>("free");
   const [streak, setStreak] = useState(0);
-  const [fitStatus, setFitStatus] = useState("No steps logged yet");
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>({ meal_reminders: true, workout_reminders: true, weekly_summary: false });
 
@@ -68,11 +66,6 @@ export default function ProfilePage() {
         }
       }
       setStreak(currentStreak);
-
-      const day = await getDay(user.uid!, todayKey);
-      if (day?.steps) {
-        setFitStatus(`${day.steps.toLocaleString()} steps today`);
-      }
 
       try {
         const res = await apiFetch(`/api/limit`);
@@ -252,23 +245,17 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* ACTIVITY */}
+            {/* ACTIVITY — step counting arrives with the mobile app */}
             <div>
               <div className="cl-mono" style={sectionLabelStyle}>ACTIVITY</div>
-              <div style={{ ...cardStyle, overflow: "visible", padding: "16px 18px", display: "flex", alignItems: "center", gap: 14 }}>
-                <span style={{ ...iconChipStyle, color: "var(--info)" }}>
+              <div aria-disabled="true" style={{ ...cardStyle, overflow: "visible", padding: "16px 18px", display: "flex", alignItems: "center", gap: 14, userSelect: "none", cursor: "default" }}>
+                <span style={{ ...iconChipStyle, color: "var(--text-tertiary)", opacity: 0.55 }}>
                   <Activity size={18} />
                 </span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 15, fontWeight: 500, color: "var(--text-primary)" }}>Daily Steps</div>
-                  <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{fitStatus}</div>
+                  <div style={{ fontSize: 15, fontWeight: 500, color: "var(--text-tertiary)" }}>Step counting</div>
+                  <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>To count your steps, download our app — coming soon.</div>
                 </div>
-                <Link
-                  href="/profile/google-fit"
-                  style={{ padding: "8px 16px", background: "transparent", border: "1.5px solid var(--lime-400)", color: "var(--lime-600)", fontWeight: 600, fontSize: 13, borderRadius: 9, cursor: "pointer" }}
-                >
-                  Log steps
-                </Link>
               </div>
             </div>
 

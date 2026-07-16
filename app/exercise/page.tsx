@@ -325,31 +325,34 @@ export default function ExercisePage() {
 
           {/* RIGHT RAIL */}
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            {/* Compact steps card */}
-            <div className="cl-card" style={{ borderRadius: 18, padding: 20, display: "flex", alignItems: "center", gap: 18 }}>
-              <svg width={stepRingSize} height={stepRingSize} viewBox={`0 0 ${stepRingSize} ${stepRingSize}`} style={{ flex: "none" }}>
-                <circle cx={stepRingSize / 2} cy={stepRingSize / 2} r={stepR} fill="none" stroke="var(--ring-track)" strokeWidth="8" />
-                <circle
-                  cx={stepRingSize / 2}
-                  cy={stepRingSize / 2}
-                  r={stepR}
-                  fill="none"
-                  stroke="var(--info)"
-                  strokeWidth="8"
-                  strokeLinecap="round"
-                  strokeDasharray={stepCirc}
-                  strokeDashoffset={stepDash}
-                  transform={`rotate(-90 ${stepRingSize / 2} ${stepRingSize / 2})`}
-                />
-              </svg>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: 22, fontWeight: 700, color: "var(--text-primary)", lineHeight: 1 }}>
-                  {steps.toLocaleString()}
+            {/* Steps card — greyed out until the mobile app ships step counting */}
+            <div className="cl-card" style={{ borderRadius: 18, padding: 20, cursor: "default", userSelect: "none" }} aria-disabled="true">
+              <div style={{ display: "flex", alignItems: "center", gap: 18, opacity: 0.45, filter: "grayscale(1)", pointerEvents: "none" }}>
+                <svg width={stepRingSize} height={stepRingSize} viewBox={`0 0 ${stepRingSize} ${stepRingSize}`} style={{ flex: "none" }}>
+                  <circle cx={stepRingSize / 2} cy={stepRingSize / 2} r={stepR} fill="none" stroke="var(--ring-track)" strokeWidth="8" />
+                  <circle
+                    cx={stepRingSize / 2}
+                    cy={stepRingSize / 2}
+                    r={stepR}
+                    fill="none"
+                    stroke="var(--info)"
+                    strokeWidth="8"
+                    strokeLinecap="round"
+                    strokeDasharray={stepCirc}
+                    strokeDashoffset={stepDash}
+                    transform={`rotate(-90 ${stepRingSize / 2} ${stepRingSize / 2})`}
+                  />
+                </svg>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 22, fontWeight: 700, color: "var(--text-tertiary)", lineHeight: 1 }}>
+                    {steps.toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4 }}>/ {stepGoal.toLocaleString()} steps</div>
                 </div>
-                <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4 }}>/ {stepGoal.toLocaleString()} steps</div>
-                <Link href="/profile/google-fit" style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 8, display: "inline-flex", alignItems: "center", gap: 5 }}>
-                  <Footprints size={12} style={{ color: "var(--lime-400)" }} /> {steps > 0 ? "Update steps" : "Log today's steps"}
-                </Link>
+              </div>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 7, marginTop: 14, fontSize: 12, color: "var(--text-tertiary)", lineHeight: 1.5 }}>
+                <Footprints size={13} style={{ flex: "none", marginTop: 1 }} />
+                To count your steps, download our app — coming soon.
               </div>
             </div>
 
