@@ -85,26 +85,24 @@ gcloud artifacts repositories describe "$REPO" --location="$REGION" >/dev/null 2
   gcloud artifacts repositories create "$REPO" \
     --repository-format=docker --location="$REGION"
 
-echo "==> Configuring docker auth for $REGION-docker.pkg.dev…"
-gcloud auth configure-docker "$REGION-docker.pkg.dev" -q >/dev/null
-
-echo "==> Building image (bakes NEXT_PUBLIC_* into the browser bundle)…"
-docker build -t "$IMAGE" \
-  --build-arg NEXT_PUBLIC_FIREBASE_API_KEY="$NEXT_PUBLIC_FIREBASE_API_KEY" \
-  --build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="$NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN" \
-  --build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID="$NEXT_PUBLIC_FIREBASE_PROJECT_ID" \
-  --build-arg NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="$NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET" \
-  --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="$NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID" \
-  --build-arg NEXT_PUBLIC_FIREBASE_APP_ID="$NEXT_PUBLIC_FIREBASE_APP_ID" \
-  --build-arg NEXT_PUBLIC_APP_URL="$APP_URL" \
-  --build-arg NEXT_PUBLIC_GA_MEASUREMENT_ID="${NEXT_PUBLIC_GA_MEASUREMENT_ID:-}" \
-  --build-arg NEXT_PUBLIC_ADSENSE_CLIENT_ID="${NEXT_PUBLIC_ADSENSE_CLIENT_ID:-}" \
-  --build-arg NEXT_PUBLIC_ADSENSE_SLOT_NATIVE="${NEXT_PUBLIC_ADSENSE_SLOT_NATIVE:-}" \
-  --build-arg NEXT_PUBLIC_AMAZON_AFFILIATE_TAG="${NEXT_PUBLIC_AMAZON_AFFILIATE_TAG:-}" \
-  .
-
-echo "==> Pushing image…"
-docker push "$IMAGE"
+# Build + push the image with Cloud Build (server-side, inside Google's
+# network). This avoids the flaky local `docker push` from Cloud Shell and
+# needs no local Docker at all. NEXT_PUBLIC_* are passed as build args via
+# substitutions (a custom '|' delimiter keeps any special chars safe).
+echo "==> Building + pushing image via Cloud Build (this bakes NEXT_PUBLIC_* into the bundle)…"
+SUBS="_IMAGE=$IMAGE"
+SUBS="$SUBS|_FB_API_KEY=$NEXT_PUBLIC_FIREBASE_API_KEY"
+SUBS="$SUBS|_FB_AUTH_DOMAIN=$NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN"
+SUBS="$SUBS|_FB_PROJECT_ID=$NEXT_PUBLIC_FIREBASE_PROJECT_ID"
+SUBS="$SUBS|_FB_STORAGE_BUCKET=$NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET"
+SUBS="$SUBS|_FB_SENDER_ID=$NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID"
+SUBS="$SUBS|_FB_APP_ID=$NEXT_PUBLIC_FIREBASE_APP_ID"
+SUBS="$SUBS|_APP_URL=$APP_URL"
+SUBS="$SUBS|_GA_ID=${NEXT_PUBLIC_GA_MEASUREMENT_ID:-}"
+SUBS="$SUBS|_ADSENSE_CLIENT=${NEXT_PUBLIC_ADSENSE_CLIENT_ID:-}"
+SUBS="$SUBS|_ADSENSE_SLOT=${NEXT_PUBLIC_ADSENSE_SLOT_NATIVE:-}"
+SUBS="$SUBS|_AMAZON_TAG=${NEXT_PUBLIC_AMAZON_AFFILIATE_TAG:-}"
+gcloud builds submit --config cloudbuild.yaml --substitutions="^|^$SUBS" .
 
 # Create the secret if missing, then add the current value as a new version.
 put_secret() {

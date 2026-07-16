@@ -1,0 +1,19 @@
+# What NOT to upload to Cloud Build as build context (keeps the upload small).
+# The Docker build installs deps itself, so node_modules/.next aren't needed.
+.git
+node_modules
+.next
+out
+build
+coverage
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+next-env.d.ts
+__pycache__/
+*.pyc
+.vscode
+.claude
+NEXT_STEPS.docx
+ROADMAP.docx
