@@ -347,13 +347,9 @@ export default function ExercisePage() {
                   {steps.toLocaleString()}
                 </div>
                 <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4 }}>/ {stepGoal.toLocaleString()} steps</div>
-                {steps > 0 ? (
-                  <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 8 }}>Google Health</div>
-                ) : (
-                  <Link href="/profile/google-fit" style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 8, display: "inline-flex", alignItems: "center", gap: 5 }}>
-                    <Footprints size={12} style={{ color: "var(--lime-400)" }} /> Connect Google Health
-                  </Link>
-                )}
+                <Link href="/profile/google-fit" style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 8, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <Footprints size={12} style={{ color: "var(--lime-400)" }} /> {steps > 0 ? "Update steps" : "Log today's steps"}
+                </Link>
               </div>
             </div>
 
