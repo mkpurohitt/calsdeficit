@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { genai, chatModelId } from '../../../lib/server/genai';
+import { Type, type Schema } from '@google/genai';
+import { genai, chatModelId, visionModelId } from '../../../lib/server/genai';
 import { findExercises } from '../../../lib/server/exercise-db';
 import { analyzeFoodImage, analyzeFoodText } from '../../../lib/food-analysis';
 import { parseWorkout } from '../../../lib/server/workout-parse';
@@ -11,24 +12,11 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const muscleMap: Record<string, string[]> = {
-  chest: ['pectorals'],
-  back: ['lats', 'upper back', 'traps'],
-  legs: ['quads', 'hamstrings', 'glutes', 'calves'],
-  arms: ['biceps', 'triceps', 'forearms'],
-  shoulders: ['delts'],
-  abs: ['abs'],
-  core: ['abs'],
-  biceps: ['biceps'],
-  triceps: ['triceps'],
-  glutes: ['glutes'],
-  quads: ['quads'],
-  hamstrings: ['hamstrings'],
-  calves: ['calves'],
+  chest: ['pectorals'], back: ['lats', 'upper back', 'traps'],
+  legs: ['quads', 'hamstrings', 'glutes', 'calves'], arms: ['biceps', 'triceps', 'forearms'],
+  shoulders: ['delts'], abs: ['abs'], core: ['abs'], biceps: ['biceps'], triceps: ['triceps'],
+  glutes: ['glutes'], quads: ['quads'], hamstrings: ['hamstrings'], calves: ['calves'],
 };
-
-const exerciseIntentWords = [
-  'exercise', 'exercises', 'workout', 'workouts', 'movement', 'movements', 'lift', 'training', 'best',
-];
 
 function detectMuscles(message: string) {
   const msgLower = message.toLowerCase();
@@ -39,47 +27,55 @@ function detectMuscles(message: string) {
   return [...detected];
 }
 
-function isExerciseRequest(message: string) {
-  const msgLower = message.toLowerCase();
-  return exerciseIntentWords.some((word) => msgLower.includes(word)) || detectMuscles(message).length > 0;
-}
-
-/** "I ate/eat…", "calories in/of…", "give calories", "I had X for lunch" → structured food card. */
-function isFoodLogIntent(message: string) {
-  // Advice-style questions ("how many calories should I eat per day") stay in normal chat.
-  if (/\bshould\b|\bper day\b|\bdaily (intake|target|calories)\b|\bdeficit\b|\bburn(ed|t)?\b|\btdee\b/i.test(message)) {
-    return false;
-  }
-  return /(\bi\s+(just\s+)?(ate|eat|had|have|drank|drink|consumed|am having|have eaten)\b|\bfor (breakfast|lunch|dinner|snacks?)\b|\bcalories?\s*(in|of|for)?\b|\bkcal\b|\bnutrition (of|in|for)\b|\bmacros? (of|in|for)?\b|\blog (my )?(food|meal)\b)/i.test(message);
-}
-
-/** "I did bench 4x8", "log squats 3 sets of 10" → structured workout log. */
-function isWorkoutLogIntent(message: string) {
-  const didSomething = /\b(i (just )?(did|done|completed|finished|trained|performed)|log (my )?(workout|exercise|set|lift))\b/i.test(message);
-  const setsReps = /(\d+\s*[x×]\s*\d+|\b\d+\s*sets?\b|\b\d+\s*reps?\b)/i.test(message);
-  return (didSomething && !/\?\s*$/.test(message)) || (setsReps && didSomething) || (setsReps && /\b(bench|squat|deadlift|press|curl|row|pull[- ]?up|push[- ]?up|lunge|raise|extension|pushdown|fly|dip|crunch|plank)\b/i.test(message));
-}
-
 async function fetchExerciseMatches(message: string) {
-  if (!message || !isExerciseRequest(message)) return [];
   const muscles = detectMuscles(message);
-  const tokens = message
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((token) => token.length > 2 && !['best', 'exercise', 'exercises', 'for', 'with', 'and', 'the', 'workout'].includes(token));
-
+  const tokens = message.toLowerCase().split(/[^a-z0-9]+/)
+    .filter((t) => t.length > 2 && !['best', 'exercise', 'exercises', 'for', 'with', 'and', 'the', 'workout'].includes(t));
   try {
-    if (muscles.length > 0) {
-      return await findExercises({ muscles, limit: 6 });
-    }
-    if (tokens.length > 0) {
-      return await findExercises({ query: tokens[0], limit: 6 });
-    }
+    if (muscles.length > 0) return await findExercises({ muscles, limit: 6 });
+    if (tokens.length > 0) return await findExercises({ query: tokens[0], limit: 6 });
   } catch (error) {
     console.error('[Chat API] Exercise lookup error:', error);
   }
   return [];
 }
+
+/** AI intent router: decides how a text message should be answered. */
+type Category = 'food' | 'workout_log' | 'exercise_search' | 'fitness_advice' | 'off_topic';
+
+const classifySchema: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    category: {
+      type: Type.STRING,
+      enum: ['food', 'workout_log', 'exercise_search', 'fitness_advice', 'off_topic'],
+      description:
+        "food = the user names/describes a food or drink or asks its calories/macros/nutrition (incl. 'i ate X'); workout_log = the user reports HAVING DONE an exercise to log it (e.g. 'i did bench 4x8'); exercise_search = asks which exercises to do or how to do a movement; fitness_advice = other diet/training/nutrition/wellness question; off_topic = anything NOT about food, nutrition, exercise, fitness, or health.",
+    },
+    food_query: { type: Type.STRING, description: 'If category=food, a concise normalized food description, else empty.' },
+  },
+  required: ['category'],
+};
+
+async function classify(message: string): Promise<{ category: Category; food_query: string }> {
+  try {
+    const res = await genai().models.generateContent({
+      model: visionModelId(),
+      contents: [{ role: 'user', parts: [{ text: `Classify this message from a diet & fitness app user. Message: "${message}"` }] }],
+      config: { responseMimeType: 'application/json', responseSchema: classifySchema, temperature: 0 },
+    });
+    const parsed = JSON.parse(res.text || '{}');
+    const category = (['food', 'workout_log', 'exercise_search', 'fitness_advice', 'off_topic'].includes(parsed.category)
+      ? parsed.category : 'fitness_advice') as Category;
+    return { category, food_query: typeof parsed.food_query === 'string' ? parsed.food_query : '' };
+  } catch (error) {
+    console.error('[Chat API] classify failed, defaulting to advice:', error);
+    return { category: 'fitness_advice', food_query: '' };
+  }
+}
+
+const OFF_TOPIC_REPLY =
+  "I'm **Calolean**, your diet & fitness coach 💪 — I can help with food, nutrition, calories, workouts, and exercise form. I can't help with that one, but ask me anything about your training or diet!";
 
 export async function POST(req: Request) {
   try {
@@ -87,134 +83,113 @@ export async function POST(req: Request) {
     if (user instanceof NextResponse) return user;
 
     const { message, fileData, mimeType } = await req.json();
-
     const isImage = Boolean(fileData && typeof mimeType === 'string' && mimeType.startsWith('image/'));
     const isVideo = Boolean(fileData && typeof mimeType === 'string' && mimeType.startsWith('video/'));
-    const usageKind: UsageKind = isVideo ? 'video' : isImage ? 'image' : 'text';
 
-    const usage = await consumeUsage(user.uid, usageKind);
-    if (!usage.allowed) {
-      return NextResponse.json({ success: false, error: usageLimitMessage(usage) }, { status: 429 });
-    }
-    const adsEnabled = tierConfig(usage.tier).ads;
-    const usagePayload = { used_pct: usage.used_pct, resets_at: usage.resets_at, tier: usage.tier };
-
-    // ── Food photo → structured scan card (verified against our database) ──
-    if (isImage) {
-      const data = await analyzeFoodImage({
-        base64Data: String(fileData).split(',').pop() as string,
-        mimeType,
-        mealType: 'Snacks',
-        userContext: message || undefined,
-      });
-      return NextResponse.json({
-        success: true,
-        kind: 'food-scan',
-        scan: data,
-        adKeywords: adsEnabled ? data.suggested_ad_keywords : [],
-        adsEnabled,
-        exercises: [],
-        usage: usagePayload,
-      });
-    }
-
-    // ── Text-only intents: structured food card / structured workout log ──
+    // ── Text-only: classify first (unmetered) so off-topic refusals are free ──
     if (!fileData && message) {
-      if (isWorkoutLogIntent(message)) {
+      const { category, food_query } = await classify(message);
+
+      if (category === 'off_topic') {
+        return NextResponse.json({
+          success: true, kind: 'text', data: OFF_TOPIC_REPLY, exercises: [],
+          adKeywords: [], adsEnabled: false, usage: null,
+        });
+      }
+
+      const usage = await consumeUsage(user.uid, 'text');
+      if (!usage.allowed) return NextResponse.json({ success: false, error: usageLimitMessage(usage) }, { status: 429 });
+      const adsEnabled = tierConfig(usage.tier).ads;
+      const usagePayload = { used_pct: usage.used_pct, resets_at: usage.resets_at, tier: usage.tier };
+
+      if (category === 'food') {
+        try {
+          const data = await analyzeFoodText({ description: food_query || message, mealType: 'Snacks' });
+          return NextResponse.json({
+            success: true, kind: 'food-scan', scan: data,
+            adKeywords: adsEnabled ? data.suggested_ad_keywords : [], adsEnabled, exercises: [], usage: usagePayload,
+          });
+        } catch (error) {
+          console.error('[Chat API] food text scan failed, falling back to chat:', error);
+        }
+      }
+
+      if (category === 'workout_log') {
         try {
           const workout = await parseWorkout({ message });
           return NextResponse.json({
-            success: true,
-            kind: 'workout-log',
-            workout,
+            success: true, kind: 'workout-log', workout,
             data: `Nice work — **${workout.exercise_name}**, ${workout.sets}×${workout.reps}${workout.weight_kg ? ` at ${workout.weight_kg} kg` : ''}. Log it to your Exercise diary below.`,
-            adKeywords: adsEnabled ? ['gym gear', 'fitness equipment', 'sports nutrition'] : [],
-            adsEnabled,
-            exercises: [],
-            usage: usagePayload,
+            adKeywords: adsEnabled ? ['gym gear', 'fitness equipment', 'sports nutrition'] : [], adsEnabled, exercises: [], usage: usagePayload,
           });
         } catch (error) {
-          console.error('[Chat API] workout parse failed, falling through to chat:', error);
+          console.error('[Chat API] workout parse failed, falling back to chat:', error);
         }
       }
-      if (isFoodLogIntent(message)) {
-        try {
-          const data = await analyzeFoodText({ description: message, mealType: 'Snacks' });
-          return NextResponse.json({
-            success: true,
-            kind: 'food-scan',
-            scan: data,
-            adKeywords: adsEnabled ? data.suggested_ad_keywords : [],
-            adsEnabled,
-            exercises: [],
-            usage: usagePayload,
-          });
-        } catch (error) {
-          console.error('[Chat API] text food scan failed, falling through to chat:', error);
-        }
-      }
+
+      const exerciseMatches = category === 'exercise_search' ? await fetchExerciseMatches(message) : [];
+      const text = await answerChat(message, exerciseMatches);
+      return NextResponse.json({
+        success: true, kind: 'text', data: text,
+        exercises: exerciseMatches.map((ex) => ({ id: ex.id, name: ex.name, muscle_group: ex.muscle_group, equipment: ex.equipment, gif_url: ex.gif_url })),
+        adKeywords: adsEnabled ? deriveChatAdKeywords(false, exerciseMatches.map((e) => e.muscle_group)) : [], adsEnabled, usage: usagePayload,
+      });
     }
 
-    const exerciseMatches = !fileData ? await fetchExerciseMatches(message || '') : [];
+    // ── With a file: image → food scan, video → gym coach ──
+    const usageKind: UsageKind = isVideo ? 'video' : 'image';
+    const usage = await consumeUsage(user.uid, usageKind);
+    if (!usage.allowed) return NextResponse.json({ success: false, error: usageLimitMessage(usage) }, { status: 429 });
+    const adsEnabled = tierConfig(usage.tier).ads;
+    const usagePayload = { used_pct: usage.used_pct, resets_at: usage.resets_at, tier: usage.tier };
 
-    let systemInstruction = '';
-    if (isVideo) {
-      systemInstruction = `You are Calolean's Gym Coach AI. The user has uploaded a workout/exercise video and may provide additional details. Identify the exercise, rate their form (1-10), and give specific corrections. Output Markdown. End with: SEARCH_QUERY: [Exercise Name] correct form.`;
-    } else {
-      systemInstruction = `You are Calolean, an expert fitness and nutrition coach. Answer directly and decisively — never give vague non-answers like "it varies widely" or "it depends".
-
-When asked how many calories or macros a food/drink has, ALWAYS lead with a single concrete number for one standard serving, then the macro split, and state the serving you assumed. Example: "**Masala chai (1 cup, 240 ml, with milk + sugar) ≈ 120 kcal** — 3g protein, 16g carbs, 4g fat." Prefer one best estimate over a wide range; at most one short line on a common variant. For other questions, give a clear, actionable answer. Keep it tight and practical in Markdown — no filler.`;
+    if (isImage) {
+      const data = await analyzeFoodImage({
+        base64Data: String(fileData).split(',').pop() as string, mimeType, mealType: 'Snacks', userContext: message || undefined,
+      });
+      return NextResponse.json({
+        success: true, kind: 'food-scan', scan: data,
+        adKeywords: adsEnabled ? data.suggested_ad_keywords : [], adsEnabled, exercises: [], usage: usagePayload,
+      });
     }
 
-    if (exerciseMatches.length > 0) {
-      const dbResults = exerciseMatches
-        .map((ex, idx) =>
-          `${idx + 1}. ${ex.name} | muscle: ${ex.muscle_group} | equipment: ${ex.equipment || 'Bodyweight'} | app_url: /exercise/${ex.id} | gif_url: ${ex.gif_url}`)
-        .join('\n');
-      systemInstruction += `\n\nThe user is asking for exercise advice. Recommend ONLY exercises from this official database list. Keep the answer short and practical, highlight the best 3-5 options, and do not invent exercise names. The UI will render linked exercise cards from the same database.\n${dbResults}`;
-    }
-
+    // video → gym coach
+    const gymPrompt = `You are Calolean's Gym Coach AI. The user uploaded a workout/exercise video. Identify the exercise, rate their form (1-10), and give specific corrections. Output Markdown. End with: SEARCH_QUERY: [Exercise Name] correct form.`;
     const parts: ({ text: string } | { inlineData: { mimeType: string; data: string } })[] = [
-      { text: systemInstruction },
+      { text: gymPrompt },
+      ...(message ? [{ text: `User: ${message}` }] : []),
+      { inlineData: { mimeType, data: String(fileData).split(',').pop() as string } },
     ];
-    if (message) parts.push({ text: `User: ${message}` });
-    if (fileData) {
-      parts.push({ inlineData: { mimeType, data: String(fileData).split(',').pop() as string } });
-    }
-
-    const result = await genai().models.generateContent({
-      model: chatModelId(),
-      contents: [{ role: 'user', parts }],
-    });
-
+    const result = await genai().models.generateContent({ model: chatModelId(), contents: [{ role: 'user', parts }] });
     return NextResponse.json({
-      success: true,
-      kind: 'text',
-      data: result.text ?? '',
-      exercises: exerciseMatches.map((ex) => ({
-        id: ex.id,
-        name: ex.name,
-        muscle_group: ex.muscle_group,
-        equipment: ex.equipment,
-        gif_url: ex.gif_url,
-      })),
-      adKeywords: adsEnabled ? deriveChatAdKeywords(isVideo, exerciseMatches.map((e) => e.muscle_group)) : [],
-      adsEnabled,
-      usage: usagePayload,
+      success: true, kind: 'text', data: result.text ?? '', exercises: [],
+      adKeywords: adsEnabled ? deriveChatAdKeywords(true, []) : [], adsEnabled, usage: usagePayload,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Chat failed.';
+    const msg = error instanceof Error ? error.message : 'Chat failed.';
     console.error('Gemini AI Error:', error);
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }
 
-// Context isolation (blueprint §B): only database-derived category keywords go
-// to the ad layer — never the user's raw chat text.
+async function answerChat(message: string, exerciseMatches: Awaited<ReturnType<typeof fetchExerciseMatches>>) {
+  let systemInstruction = `You are Calolean, an expert diet & fitness coach. ONLY answer questions about food, nutrition, calories, exercise, training, and health/wellness. Answer directly and decisively — never say "it varies widely".
+
+When asked calories/macros of a food, ALWAYS lead with one concrete number for a standard serving + the macro split (e.g. "**Masala chai (1 cup, 240 ml) ≈ 120 kcal** — 3g protein, 16g carbs, 4g fat"). Keep it tight and practical in Markdown.`;
+  if (exerciseMatches.length > 0) {
+    const dbResults = exerciseMatches.map((ex, i) => `${i + 1}. ${ex.name} | muscle: ${ex.muscle_group} | equipment: ${ex.equipment || 'Bodyweight'} | app_url: /exercise/${ex.id}`).join('\n');
+    systemInstruction += `\n\nRecommend ONLY exercises from this official database list; highlight the best 3-5, don't invent names. The UI renders linked cards.\n${dbResults}`;
+  }
+  const result = await genai().models.generateContent({
+    model: chatModelId(),
+    contents: [{ role: 'user', parts: [{ text: systemInstruction }, { text: `User: ${message}` }] }],
+  });
+  return result.text ?? '';
+}
+
+// Context isolation: only database-derived category keywords reach the ad layer.
 function deriveChatAdKeywords(isVideo: boolean, muscleGroups: string[]): string[] {
   if (isVideo) return ['gym gear', 'fitness equipment', 'sports nutrition'];
-  if (muscleGroups.length > 0) {
-    return [...new Set(['home workout', 'gym gear', ...muscleGroups.slice(0, 2).map((m) => `${m} training`)])];
-  }
+  if (muscleGroups.length > 0) return [...new Set(['home workout', 'gym gear', ...muscleGroups.slice(0, 2).map((m) => `${m} training`)])];
   return ['healthy eating', 'fitness'];
 }

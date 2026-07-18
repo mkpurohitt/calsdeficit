@@ -5,7 +5,7 @@ import Link from "next/link";
 import AppLayout from "../../components/AppLayout";
 import FormCheckPanel from "../../components/FormCheckPanel";
 import { useAuth } from "../../lib/AuthContext";
-import { getDateKey, getDateKeyDaysAgo, getDay, getFormAnalyses, getUserGoal, getWorkoutLogs, saveUserGoal, saveWorkoutLog } from "../../lib/user-data";
+import { getDateKey, getDateKeyDaysAgo, getDay, getUserGoal, getWorkoutLogs, saveUserGoal, saveWorkoutLog } from "../../lib/user-data";
 import { apiFetch } from "../../lib/api-client";
 import { makeVideoThumb, MAX_VIDEO_BYTES, fileToBase64 } from "../../lib/image-compress";
 import { STEP_GOAL } from "../../lib/config/app";
@@ -106,7 +106,6 @@ export default function ExercisePage() {
   const [showFormCheck, setShowFormCheck] = useState(false);
 
   const [todayWorkout, setTodayWorkout] = useState<WorkoutDisplayItem[]>([]);
-  const [formHistory, setFormHistory] = useState<{ exercise: string; date: string; score: number; thumb?: string }[]>([]);
   const [workoutDaysThisWeek, setWorkoutDaysThisWeek] = useState<number[]>([]);
   const [selectedDay, setSelectedDay] = useState(new Date().getDay());
   const [steps, setSteps] = useState(0);
@@ -162,9 +161,8 @@ export default function ExercisePage() {
     const userId = user.uid;
 
     const loadUserData = async () => {
-      const [logs, analyses, day, goal] = await Promise.all([
+      const [logs, day, goal] = await Promise.all([
         getWorkoutLogs(userId, { from: getDateKeyDaysAgo(7), to: getDateKey() }),
-        getFormAnalyses(userId),
         getDay(userId, getDateKey()),
         getUserGoal(userId),
       ]);
@@ -191,15 +189,6 @@ export default function ExercisePage() {
             .map((log) => new Date(log.logged_at).getDay())
         ),
       ]);
-
-      setFormHistory(
-        analyses.slice(0, 5).map((record) => ({
-          exercise: record.exercise_name,
-          date: new Date(record.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-          score: Math.round(record.score / 10),
-          thumb: record.thumb,
-        }))
-      );
 
       setSteps(day?.steps || 0);
       setStepGoal(goal?.step_goal || STEP_GOAL);
@@ -694,33 +683,6 @@ export default function ExercisePage() {
                 >
                   <Plus size={16} /> Add Exercise
                 </Link>
-              </div>
-            </div>
-
-            <div className="cl-card" style={{ borderRadius: 18, padding: 22 }}>
-              <div style={{ fontWeight: 600, fontSize: 16, color: "var(--text-primary)", marginBottom: 14 }}>Past Form Checks</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {formHistory.length === 0 && (
-                  <p style={{ fontSize: 13, color: "var(--text-tertiary)", textAlign: "center", padding: 20 }}>
-                    No form analyses yet. Upload a video to get started.
-                  </p>
-                )}
-                {formHistory.map((item, index) => (
-                  <div key={`${item.exercise}-${index}`} className="cl-card-hover" style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 14px", background: "var(--surface-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 12 }}>
-                    <span style={{ flex: "none", width: 44, height: 44, borderRadius: 11, background: item.score >= 8 ? "rgba(170, 255, 0, 0.12)" : "rgba(255, 184, 0, 0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 15, color: item.score >= 8 ? "var(--lime-600)" : "var(--warning)" }}>{item.score}</span>
-                    </span>
-                    {item.thumb && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={item.thumb} alt="" style={{ flex: "none", width: 36, height: 36, borderRadius: 9, objectFit: "cover" }} />
-                    )}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{item.exercise}</div>
-                      <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 1 }}>{item.date} · score {item.score}/10</div>
-                    </div>
-                    <ChevronRight size={18} style={{ color: "var(--text-tertiary)", flexShrink: 0 }} />
-                  </div>
-                ))}
               </div>
             </div>
           </div>

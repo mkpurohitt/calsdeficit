@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AppLayout from "../../../components/AppLayout";
-import { ArrowLeft, Activity, ChevronRight, Search } from "lucide-react";
+import { ArrowLeft, ChevronRight, Search } from "lucide-react";
+
+import ExerciseGif from "../../../components/ExerciseGif";
 
 interface ExerciseItem {
   id: string;
@@ -11,6 +13,7 @@ interface ExerciseItem {
   muscle_group: string;
   equipment?: string | null;
   gif_url?: string | null;
+  frames?: string[];
 }
 
 const FILTERS = ["All", "Chest", "Back", "Legs", "Arms", "Shoulders", "Core"] as const;
@@ -29,7 +32,6 @@ export default function MuscleLibraryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<(typeof FILTERS)[number]>("All");
   const [loading, setLoading] = useState(true);
-  const [imgErrors, setImgErrors] = useState<Record<string, boolean>>({});
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Real library size for the header eyebrow
@@ -214,18 +216,7 @@ export default function MuscleLibraryPage() {
                       overflow: "hidden",
                     }}
                   >
-                    {exercise.gif_url && !imgErrors[exercise.id] ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={exercise.gif_url}
-                        alt={exercise.name}
-                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                        loading="lazy"
-                        onError={() => setImgErrors((prev) => ({ ...prev, [exercise.id]: true }))}
-                      />
-                    ) : (
-                      <Activity size={24} />
-                    )}
+                    <ExerciseGif frames={exercise.frames} src={exercise.gif_url} alt={exercise.name} radius={13} iconSize={24} />
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div

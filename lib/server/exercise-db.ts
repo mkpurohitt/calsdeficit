@@ -7,6 +7,9 @@ export interface ExerciseRecord {
   muscle_group: string;
   equipment: string | null;
   gif_url: string | null;
+  /** All animation frames (start/end positions) — cycled client-side to
+   * simulate the exercise motion, since the source has stills, not GIFs. */
+  frames?: string[];
   body_part: string | null;
   secondary_muscles: string[];
   instructions: string[];
@@ -71,6 +74,7 @@ const SUPPLEMENT_IMG_BASE = "https://raw.githubusercontent.com/yuhonas/free-exer
 
 interface SupplementEntry {
   gif_url: string | null;
+  frames: string[];
   secondary_muscles: string[];
   instructions: string[];
 }
@@ -91,8 +95,10 @@ async function loadSupplement(): Promise<Map<string, SupplementEntry>> {
         const map = new Map<string, SupplementEntry>();
         for (const entry of raw) {
           if (!entry.id) continue;
+          const frames = (entry.images || []).map((img) => SUPPLEMENT_IMG_BASE + img);
           map.set(entry.id, {
-            gif_url: entry.images?.length ? SUPPLEMENT_IMG_BASE + entry.images[0] : null,
+            gif_url: frames[0] || null,
+            frames,
             secondary_muscles: entry.secondaryMuscles || [],
             instructions: entry.instructions || [],
           });
@@ -122,6 +128,7 @@ async function enrich(records: ExerciseRecord[]): Promise<ExerciseRecord[]> {
       return {
         ...r,
         gif_url: extra.gif_url || r.gif_url,
+        frames: extra.frames.length > 0 ? extra.frames : r.gif_url ? [r.gif_url] : [],
         instructions: extra.instructions.length > 0 ? extra.instructions : r.instructions,
         secondary_muscles:
           extra.secondary_muscles.length > 0 ? extra.secondary_muscles : r.secondary_muscles,

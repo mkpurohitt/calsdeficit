@@ -646,8 +646,8 @@ export default function Dashboard() {
                             ))}
                           </div>
                         )}
-                        {/* Contextual native ad after substantial AI answers */}
-                        {msg.role === 'ai' && idx > 0 && (msg.exercises?.length || msg.text.length > 280) ? (
+                        {/* Contextual native ad after every real AI answer (adsEnabled=false suppresses it, e.g. off-topic replies) */}
+                        {msg.role === 'ai' && idx > 0 && msg.text.trim().length > 0 ? (
                           <AdCard keywords={msg.adKeywords} enabled={msg.adsEnabled} />
                         ) : null}
                       </div>

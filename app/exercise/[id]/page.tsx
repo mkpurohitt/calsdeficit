@@ -5,7 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import AppLayout from "../../../components/AppLayout";
 import { useAuth } from "../../../lib/AuthContext";
 import { getDateKey, saveWorkoutLog } from "../../../lib/user-data";
-import { ArrowLeft, CheckCircle, Dumbbell, Loader2, Plus, Video } from "lucide-react";
+import { ArrowLeft, CheckCircle, Loader2, Plus, Video } from "lucide-react";
+import ExerciseGif from "../../../components/ExerciseGif";
 
 interface ExerciseDetail {
   id: string;
@@ -13,6 +14,7 @@ interface ExerciseDetail {
   muscle_group: string;
   equipment?: string | null;
   gif_url?: string | null;
+  frames?: string[];
   body_part?: string | null;
   secondary_muscles?: string[];
   instructions?: string[];
@@ -25,7 +27,6 @@ export default function ExerciseDetailPage() {
 
   const [exercise, setExercise] = useState<ExerciseDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [imgError, setImgError] = useState(false);
   const [logForm, setLogForm] = useState({ sets: 3, reps: 10, weight_lbs: 0 });
   const [isLogging, setIsLogging] = useState(false);
   const [logMessage, setLogMessage] = useState<string | null>(null);
@@ -95,17 +96,8 @@ export default function ExerciseDetailPage() {
         {exercise && (
           <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.35fr)_420px] gap-6">
             <section className="space-y-4">
-              <div style={{ width: "100%", aspectRatio: "16 / 10", borderRadius: 20, background: "var(--surface-card)", border: "1px solid var(--border-color)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {exercise.gif_url && !imgError ? (
-                  <img
-                    src={exercise.gif_url}
-                    alt={exercise.name}
-                    onError={() => setImgError(true)}
-                    style={{ width: "100%", height: "100%", objectFit: "contain", background: "#fff" }}
-                  />
-                ) : (
-                  <Dumbbell size={56} style={{ color: "var(--text-tertiary)" }} />
-                )}
+              <div style={{ width: "100%", aspectRatio: "16 / 10", borderRadius: 20, background: "var(--surface-card)", border: "1px solid var(--border-color)", overflow: "hidden" }}>
+                <ExerciseGif frames={exercise.frames} src={exercise.gif_url} alt={exercise.name} radius={20} iconSize={56} />
               </div>
 
               <div className="cl-card" style={{ borderRadius: 20, padding: 24 }}>
