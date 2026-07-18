@@ -13,9 +13,52 @@ import {
   type Gender,
   type GoalType,
 } from "../../../lib/plan";
-import { Check, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { BicepsFlexed, Check, Dumbbell, Footprints, Grip, Loader2, RefreshCw, Shield, Sparkles, Target, Zap } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 const GOALS: GoalType[] = ["Lose Weight", "Maintain Weight", "Gain Muscle"];
+
+/** Muscle symbol for a plan item, guessed from the exercise name. */
+function planIconFor(name: string): LucideIcon {
+  const n = name.toLowerCase();
+  if (/bench|push[- ]?up|chest|fly|dip/.test(n)) return Shield;
+  if (/row|pull[- ]?up|pulldown|lat|deadlift|back/.test(n)) return Grip;
+  if (/squat|lunge|leg|calf|glute|hip|hamstring|quad/.test(n)) return Footprints;
+  if (/curl|tricep|bicep|pushdown|extension|arm/.test(n)) return BicepsFlexed;
+  if (/press|raise|shoulder|delt|shrug/.test(n)) return Zap;
+  if (/crunch|plank|sit[- ]?up|ab|core|twist/.test(n)) return Target;
+  return Dumbbell;
+}
+
+interface PlanPreviewDay {
+  day: string;
+  focus: string;
+  items: string[];
+  isRest: boolean;
+}
+
+/** Parses the "**Mon — Push** · Bench 4×8 · …" weekly-plan markdown into day cards. */
+function parsePlanPreview(weeklyPlan: string): PlanPreviewDay[] {
+  return weeklyPlan
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /^\*\*/.test(line))
+    .map((line) => {
+      const bold = line.match(/\*\*(.+?)\*\*/);
+      const header = bold ? bold[1] : "";
+      const [dayPart, ...focusParts] = header.split(/[—–-]/);
+      const focus = focusParts.join("-").trim() || "Training";
+      const rest = line.replace(/\*\*(.+?)\*\*/, "").replace(/^\s*[·:]\s*/, "");
+      const items = rest.split("·").map((seg) => seg.trim()).filter(Boolean);
+      const hasSets = items.some((seg) => /\d+\s*[x×]\s*(\d|AMRAP)/i.test(seg));
+      return {
+        day: dayPart.trim().slice(0, 3),
+        focus,
+        items,
+        isRest: !hasSets,
+      };
+    });
+}
 const WORKOUT_DAY_OPTIONS = [2, 3, 4, 5, 6, 7];
 
 interface GoalForm {
@@ -340,13 +383,49 @@ export default function GoalsPage() {
               Regenerate with AI
             </button>
           </div>
+          {/* Structured day-by-day view with muscle symbols */}
+          {form.weekly_plan.trim() && (
+            <div className="plan-preview" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 16 }}>
+              {parsePlanPreview(form.weekly_plan).map((day) => (
+                <div
+                  key={day.day + day.focus}
+                  style={{
+                    background: day.isRest ? "var(--surface-elevated)" : "var(--surface-card)",
+                    border: day.isRest ? "1px solid var(--border-subtle)" : "1px solid var(--border-color)",
+                    borderRadius: 14,
+                    padding: "12px 14px",
+                  }}
+                >
+                  <div className="flex items-center" style={{ gap: 8, marginBottom: day.items.length ? 8 : 0 }}>
+                    <span className="cl-mono" style={{ flex: "none", fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 7, background: day.isRest ? "var(--surface-hover)" : "rgba(170,255,0,.12)", color: day.isRest ? "var(--text-tertiary)" : "var(--lime-600)" }}>
+                      {day.day.toUpperCase()}
+                    </span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {day.focus}
+                    </span>
+                  </div>
+                  {day.items.map((item) => {
+                    const ItemIcon = planIconFor(item);
+                    return (
+                      <div key={item} className="flex items-center" style={{ gap: 7, padding: "3px 0" }}>
+                        <ItemIcon size={13} style={{ flex: "none", color: day.isRest ? "var(--text-tertiary)" : "var(--lime-600)" }} />
+                        <span style={{ fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <label className="cl-label">Edit as text (separate exercises with &quot;·&quot;, sets×reps like 4×8)</label>
           <textarea
             value={form.weekly_plan}
             onChange={(e) => set("weekly_plan", e.target.value)}
             rows={7}
             className="cl-input"
             style={{ resize: "vertical", fontFamily: "var(--font-mono)", fontSize: 13, lineHeight: 1.7 }}
-            placeholder="**Mon** — Full-body strength…"
+            placeholder="**Mon — Push** · Bench Press 4×8 · Overhead Press 3×10…"
           />
         </section>
 
@@ -361,6 +440,9 @@ export default function GoalsPage() {
         </button>
 
         <style jsx>{`
+          @media (max-width: 640px) {
+            .plan-preview { grid-template-columns: 1fr !important; }
+          }
           @media (max-width: 720px) {
             .goals-wrap { padding: 20px 16px 40px !important; }
             .goals-grid4 { grid-template-columns: 1fr 1fr !important; }

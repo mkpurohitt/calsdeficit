@@ -107,12 +107,13 @@ async function loadSupplement(): Promise<Map<string, SupplementEntry>> {
   return supplementPromise;
 }
 
-/** Fills gif_url/instructions/secondary_muscles from the source dataset when the DB row lacks them. */
+/**
+ * Merges gif_url/instructions/secondary_muscles from the source dataset.
+ * The supplement is the source of truth for media + instructions (the bulk
+ * load stored these unreliably), the DB stays canonical for names/muscles.
+ */
 async function enrich(records: ExerciseRecord[]): Promise<ExerciseRecord[]> {
-  const needy = records.filter(
-    (r) => !r.gif_url || !r.instructions || r.instructions.length === 0 || !r.secondary_muscles || r.secondary_muscles.length === 0
-  );
-  if (needy.length === 0) return records;
+  if (records.length === 0) return records;
   try {
     const supplement = await loadSupplement();
     return records.map((r) => {
@@ -120,10 +121,10 @@ async function enrich(records: ExerciseRecord[]): Promise<ExerciseRecord[]> {
       if (!extra) return r;
       return {
         ...r,
-        gif_url: r.gif_url || extra.gif_url,
-        instructions: r.instructions && r.instructions.length > 0 ? r.instructions : extra.instructions,
+        gif_url: extra.gif_url || r.gif_url,
+        instructions: extra.instructions.length > 0 ? extra.instructions : r.instructions,
         secondary_muscles:
-          r.secondary_muscles && r.secondary_muscles.length > 0 ? r.secondary_muscles : extra.secondary_muscles,
+          extra.secondary_muscles.length > 0 ? extra.secondary_muscles : r.secondary_muscles,
       };
     });
   } catch (error) {

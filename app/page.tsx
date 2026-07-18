@@ -11,7 +11,7 @@ import FoodScanCard from "../components/FoodScanCard";
 import { apiFetch } from "../lib/api-client";
 import { compressImage, fileToBase64, makeImageThumb, MAX_VIDEO_BYTES } from "../lib/image-compress";
 import type { FoodScanResult } from "../lib/schemas/food-scan";
-import { getFoodLogs, getUserGoal, getDay, getDateKey, addFoodLog, saveWorkoutLog } from "../lib/user-data";
+import { getFoodLogs, getUserGoal, getDay, getDateKey, addFoodLog, addScanHistory, deleteScanHistory, saveWorkoutLog } from "../lib/user-data";
 import { STEP_GOAL } from "../lib/config/app";
 
 interface DailyStats {
@@ -43,6 +43,8 @@ interface Message {
   exercises?: ExerciseResult[];
   scan?: FoodScanResult;
   workout?: WorkoutParse;
+  /** Scan-history doc id (unsaved scans list in Diet); cleared when logged. */
+  historyId?: string;
   adKeywords?: string[];
   adsEnabled?: boolean;
 }
@@ -279,7 +281,7 @@ export default function Dashboard() {
   };
 
   // "Add to diary" on food-scan cards → real FoodLogRecord (+ tiny photo thumb when available)
-  const handleAddToDiary = useCallback(async (scan: FoodScanResult, sourceFile?: File | null) => {
+  const handleAddToDiary = useCallback(async (scan: FoodScanResult, sourceFile?: File | null, historyId?: string) => {
     if (!user?.uid) throw new Error("Not signed in");
     const photoThumb = sourceFile ? await makeImageThumb(sourceFile) : null;
     await addFoodLog({
@@ -300,6 +302,8 @@ export default function Dashboard() {
       date_key: getDateKey(),
       date: new Date().toISOString(),
     });
+    // Logged now — drop it from the "unsaved scans" history in Diet.
+    if (historyId) deleteScanHistory(user.uid, historyId).catch(() => {});
     loadStats(); // refresh "calories remaining" in the right rail
   }, [user, loadStats]);
 
@@ -367,15 +371,43 @@ export default function Dashboard() {
 
       if (data.success) {
         if (data.kind === 'food-scan' && data.scan) {
+          const scan = data.scan as FoodScanResult;
+          const imgFile = currentFile?.type.startsWith("image/") ? currentFile : null;
           setMessages((prev) => [...prev, {
             role: "ai",
             text: "",
-            scan: data.scan as FoodScanResult,
+            scan,
             // keep the source image around so "Add to diary" can attach a thumb
-            fileObj: currentFile?.type.startsWith("image/") ? currentFile : null,
+            fileObj: imgFile,
             adKeywords: data.adKeywords || [],
             adsEnabled: data.adsEnabled ?? true,
           }]);
+          // Record a compressed copy in scan history (Diet shows unsaved scans);
+          // removed automatically when the user adds it to the diary.
+          if (user?.uid) {
+            (async () => {
+              try {
+                const thumb = imgFile ? await makeImageThumb(imgFile) : null;
+                const hist = await addScanHistory({
+                  user_id: user.uid!,
+                  food_name: scan.food_name,
+                  portion: scan.portion,
+                  calories: scan.calories,
+                  protein_g: scan.protein_g,
+                  carbs_g: scan.carbs_g,
+                  fat_g: scan.fat_g,
+                  fiber_g: scan.fiber_g,
+                  ...(thumb ? { photo_thumb: thumb } : {}),
+                  created_at: new Date().toISOString(),
+                });
+                if (hist?.id) {
+                  setMessages((prev) => prev.map((m) => (m.scan === scan ? { ...m, historyId: hist.id } : m)));
+                }
+              } catch {
+                /* history is best-effort */
+              }
+            })();
+          }
         } else if (data.kind === 'workout-log' && data.workout) {
           setMessages((prev) => [...prev, {
             role: "ai",
@@ -440,7 +472,7 @@ export default function Dashboard() {
     <AppLayout>
       <div
         className="cl-home"
-        style={{ maxWidth: 1380, margin: "0 auto", padding: "30px 38px 48px" }}
+        style={{ maxWidth: 1380, margin: "0 auto", padding: "20px 38px 14px" }}
       >
         <div className="cl-home-grid">
 
@@ -450,7 +482,7 @@ export default function Dashboard() {
             style={{
               display: "flex",
               flexDirection: "column",
-              height: "calc(100vh - 108px)",
+              height: "calc(100vh - 34px)",
               overflow: "hidden",
               position: "relative",
             }}
@@ -497,7 +529,7 @@ export default function Dashboard() {
                         scan={msg.scan}
                         adKeywords={msg.adKeywords}
                         adsEnabled={msg.adsEnabled}
-                        onAdd={() => handleAddToDiary(msg.scan as FoodScanResult, msg.fileObj)}
+                        onAdd={() => handleAddToDiary(msg.scan as FoodScanResult, msg.fileObj, msg.historyId)}
                       />
 
                     // 2. PARSED WORKOUT LOG
@@ -922,7 +954,7 @@ export default function Dashboard() {
         }
         @media (max-width: 860px) {
           .cl-home {
-            padding: 20px 16px 32px !important;
+            padding: 12px 12px 0 !important;
           }
           .cl-home-grid {
             grid-template-columns: 1fr;
@@ -931,7 +963,8 @@ export default function Dashboard() {
             order: -1;
           }
           .cl-chat-card {
-            height: calc(100vh - 140px) !important;
+            /* viewport minus mobile top bar (56) + bottom nav (66) + gaps */
+            height: calc(100vh - 148px) !important;
           }
         }
       `}</style>

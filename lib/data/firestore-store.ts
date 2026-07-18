@@ -19,6 +19,7 @@ import type {
   FoodLogRecord,
   FormAnalysisRecord,
   NotificationPreferenceRecord,
+  ScanHistoryRecord,
   UserGoalRecord,
   WorkoutLogRecord,
 } from "./types";
@@ -159,6 +160,42 @@ export const firestoreStore: UserDataStore = {
       );
     } catch (error) {
       console.error("Error saving notification preferences:", error);
+    }
+  },
+
+  async addScanHistory(record: Omit<ScanHistoryRecord, "id">) {
+    try {
+      const ref = await addDoc(sub(record.user_id, "scanHistory"), record);
+      // Keep the collection small: prune everything past the newest 10.
+      try {
+        const snap = await getDocs(query(sub(record.user_id, "scanHistory"), orderBy("created_at", "desc")));
+        const extras = snap.docs.slice(10);
+        await Promise.all(extras.map((d) => deleteDoc(d.ref)));
+      } catch {
+        /* pruning is best-effort */
+      }
+      return { ...record, id: ref.id } as ScanHistoryRecord;
+    } catch (error) {
+      console.error("Error adding scan history:", error);
+      return null;
+    }
+  },
+
+  async getScanHistory(userId: string, limitTo = 10) {
+    try {
+      const snap = await getDocs(query(sub(userId, "scanHistory"), orderBy("created_at", "desc")));
+      return snap.docs.slice(0, limitTo).map((d) => ({ ...(d.data() as ScanHistoryRecord), id: d.id }));
+    } catch (error) {
+      console.error("Error getting scan history:", error);
+      return [];
+    }
+  },
+
+  async deleteScanHistory(userId: string, id: string) {
+    try {
+      await deleteDoc(doc(db, "users", userId, "scanHistory", id));
+    } catch (error) {
+      console.error("Error deleting scan history:", error);
     }
   },
 

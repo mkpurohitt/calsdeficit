@@ -5,11 +5,11 @@ import Link from "next/link";
 import AppLayout from "../../components/AppLayout";
 import FormCheckPanel from "../../components/FormCheckPanel";
 import { useAuth } from "../../lib/AuthContext";
-import { getDateKey, getDateKeyDaysAgo, getDay, getFormAnalyses, getUserGoal, getWorkoutLogs, saveWorkoutLog } from "../../lib/user-data";
+import { getDateKey, getDateKeyDaysAgo, getDay, getFormAnalyses, getUserGoal, getWorkoutLogs, saveUserGoal, saveWorkoutLog } from "../../lib/user-data";
 import { apiFetch } from "../../lib/api-client";
 import { makeVideoThumb, MAX_VIDEO_BYTES, fileToBase64 } from "../../lib/image-compress";
 import { STEP_GOAL } from "../../lib/config/app";
-import { ArrowRight, BicepsFlexed, Check, ChevronRight, Dumbbell, Footprints, Grip, Loader2, Plus, Send, Shield, Sparkles, Target, Upload, Video, Zap } from "lucide-react";
+import { ArrowRight, BicepsFlexed, Check, ChevronRight, Dumbbell, Footprints, Grip, Loader2, Pencil, Plus, Send, Shield, Sparkles, Target, Upload, Video, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 interface WorkoutDisplayItem {
@@ -31,6 +31,8 @@ interface DayPlan {
   focus: string;
   items: PlanItem[];
   isRest: boolean;
+  /** The raw markdown line for this day (used by per-day editing). */
+  line: string;
 }
 
 const PLAN_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -49,14 +51,32 @@ function parsePlanForDay(weeklyPlan: string, jsDay: number): DayPlan | null {
   const segments = rest.split("·").map((seg) => seg.trim()).filter(Boolean);
 
   const items: PlanItem[] = segments.map((seg) => {
-    const m = seg.match(/^(.*?)\s+(\d+)\s*[x×]\s*(\d+)\s*(?:[a-z]*)?$/i);
-    if (m) return { raw: seg, name: m[1].trim(), sets: parseInt(m[2], 10), reps: parseInt(m[3], 10) };
+    // Accepts "Bench Press 4×8", "Goblet Squat 3×12-15", "Push-ups 3×AMRAP",
+    // "Row 3×10-12 per arm" — sets = first number, reps = first rep number.
+    const m = seg.match(/^(.*?)\s+(\d+)\s*[x×]\s*(AMRAP|\d+(?:\s*[-–]\s*\d+)?)\b.*$/i);
+    if (m) {
+      const repsToken = m[3];
+      const reps = /amrap/i.test(repsToken) ? 10 : parseInt(repsToken, 10);
+      return { raw: seg, name: m[1].trim(), sets: parseInt(m[2], 10), reps: Number.isFinite(reps) ? reps : 10 };
+    }
     return { raw: seg, name: seg, sets: null, reps: null };
   });
 
   const hasSets = items.some((item) => item.sets !== null);
-  const isRest = !hasSets || /\b(rest|recovery|cardio|walk|stretch)\b/i.test(focus);
-  return { focus, items, isRest: isRest && !hasSets };
+  const isRest = !hasSets || /\b(rest|recovery)\b/i.test(focus);
+  return { focus, items, isRest: isRest && !hasSets, line: line.trim() };
+}
+
+/** Muscle symbol for a plan/log tile, guessed from the exercise name. */
+function exerciseIconFor(name: string): LucideIcon {
+  const n = name.toLowerCase();
+  if (/bench|push[- ]?up|chest|fly|dip/.test(n)) return Shield;
+  if (/row|pull[- ]?up|pulldown|lat|deadlift|back/.test(n)) return Grip;
+  if (/squat|lunge|leg|calf|glute|hip|hamstring|quad/.test(n)) return Footprints;
+  if (/curl|tricep|bicep|pushdown|extension|arm/.test(n)) return BicepsFlexed;
+  if (/press|raise|shoulder|delt|shrug/.test(n)) return Zap;
+  if (/crunch|plank|sit[- ]?up|ab|core|twist/.test(n)) return Target;
+  return Dumbbell;
 }
 
 interface LibraryCounts {
@@ -94,6 +114,9 @@ export default function ExercisePage() {
   const [libraryCounts, setLibraryCounts] = useState<LibraryCounts | null>(null);
   const [weeklyPlan, setWeeklyPlan] = useState<string>("");
   const [planBusy, setPlanBusy] = useState<string | null>(null);
+  const [planEditing, setPlanEditing] = useState(false);
+  const [planDraft, setPlanDraft] = useState("");
+  const [planSaving, setPlanSaving] = useState(false);
   // AI quick-log
   const [quickText, setQuickText] = useState("");
   const [quickVideo, setQuickVideo] = useState<File | null>(null);
@@ -228,6 +251,33 @@ export default function ExercisePage() {
     }
   };
 
+  /** Saves an edited version of just this day's plan line back into the goal. */
+  const handleSavePlanDay = async () => {
+    if (!user?.uid || !dayPlan || planSaving) return;
+    setPlanSaving(true);
+    try {
+      const goal = await getUserGoal(user.uid);
+      if (!goal) return;
+      const dayKey = PLAN_DAYS[selectedDay];
+      const draft = planDraft.trim();
+      // Keep the **Day** prefix so parsing keeps working even if the user removed it.
+      const newLine = new RegExp("^\\*\\*" + dayKey + "\\b", "i").test(draft)
+        ? draft
+        : `**${dayKey} — ${dayPlan.focus}** · ${draft}`;
+      const updated = (goal.weekly_plan || "")
+        .split("\n")
+        .map((l) => (l.trim() === dayPlan.line ? newLine : l))
+        .join("\n");
+      await saveUserGoal({ ...goal, weekly_plan: updated });
+      setWeeklyPlan(updated);
+      setPlanEditing(false);
+    } catch (error) {
+      console.error("[exercise] plan day save failed", error);
+    } finally {
+      setPlanSaving(false);
+    }
+  };
+
   /** AI quick-log: free text ("bench 4x8 60kg") and/or a short video. */
   const handleQuickLog = async () => {
     if (!user?.uid || quickBusy || (!quickText.trim() && !quickVideo)) return;
@@ -289,6 +339,9 @@ export default function ExercisePage() {
         @media (max-width: 860px) {
           .ex-cols2 { grid-template-columns: 1fr; }
           .ex-wrap { padding: 20px 16px 40px !important; }
+        }
+        @media (max-width: 640px) {
+          .plan-tiles { grid-template-columns: repeat(2, 1fr) !important; }
         }
       `}</style>
       <div className="ex-wrap" style={{ padding: "30px 38px 48px", maxWidth: 1380, margin: "0 auto" }}>
@@ -396,9 +449,23 @@ export default function ExercisePage() {
                     {dayPlan ? ` · ${dayPlan.focus}` : ""}
                   </span>
                 </div>
-                <Link href="/profile/goals" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--lime-600)" }}>
-                  Change plan →
-                </Link>
+                <div className="flex items-center" style={{ gap: 12 }}>
+                  {weeklyPlan && dayPlan && !planEditing && (
+                    <button
+                      onClick={() => {
+                        setPlanDraft(dayPlan.items.map((i) => i.raw).join(" · "));
+                        setPlanEditing(true);
+                      }}
+                      className="flex items-center"
+                      style={{ gap: 5, fontSize: 12.5, fontWeight: 600, color: "var(--text-secondary)", background: "none", border: "none", cursor: "pointer" }}
+                    >
+                      <Pencil size={12} /> Edit day
+                    </button>
+                  )}
+                  <Link href="/profile/goals" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--lime-600)" }}>
+                    Change plan →
+                  </Link>
+                </div>
               </div>
 
               {!weeklyPlan ? (
@@ -407,37 +474,76 @@ export default function ExercisePage() {
                 </p>
               ) : !dayPlan ? (
                 <p style={{ fontSize: 13, color: "var(--text-tertiary)" }}>Nothing scheduled for this day.</p>
+              ) : planEditing ? (
+                <div>
+                  <textarea
+                    value={planDraft}
+                    onChange={(e) => setPlanDraft(e.target.value)}
+                    rows={3}
+                    className="cl-input"
+                    style={{ resize: "vertical", fontFamily: "var(--font-mono)", fontSize: 12.5, lineHeight: 1.7, marginBottom: 10 }}
+                    placeholder="Bench Press 4×8 · Overhead Press 3×10 · Lateral Raise 3×15"
+                  />
+                  <div className="flex" style={{ gap: 8 }}>
+                    <button
+                      onClick={handleSavePlanDay}
+                      disabled={planSaving}
+                      className="btn-primary flex items-center"
+                      style={{ gap: 7, padding: "9px 18px", borderRadius: 10, fontSize: 13, opacity: planSaving ? 0.7 : 1 }}
+                    >
+                      {planSaving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Save day
+                    </button>
+                    <button
+                      onClick={() => setPlanEditing(false)}
+                      className="btn-ghost"
+                      style={{ padding: "9px 16px", borderRadius: 10, fontSize: 13 }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <p style={{ fontSize: 11.5, color: "var(--text-tertiary)", marginTop: 8 }}>
+                    Separate exercises with &quot;·&quot; and use sets×reps like &quot;4×8&quot;.
+                  </p>
+                </div>
               ) : dayPlan.isRest ? (
                 <div style={{ fontSize: 13.5, color: "var(--text-secondary)", lineHeight: 1.6, padding: "10px 12px", background: "var(--surface-elevated)", borderRadius: 11 }}>
                   {dayPlan.items.map((item) => item.raw).join(" · ") || "Rest & recovery day."}
                 </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div className="plan-tiles" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
                   {dayPlan.items.map((item) => {
                     const done = isPlanItemDone(item);
                     const busy = planBusy === item.raw;
                     const tickable = item.sets !== null && !done;
+                    const ItemIcon = exerciseIconFor(item.name);
                     return (
                       <button
                         key={item.raw}
                         onClick={() => tickable && handleTickPlanItem(item)}
                         disabled={!tickable || busy}
-                        className="flex items-center"
                         style={{
-                          gap: 12,
-                          padding: "11px 13px",
-                          borderRadius: 11,
-                          textAlign: "left",
-                          background: done ? "rgba(170,255,0,0.07)" : "var(--surface-elevated)",
-                          border: done ? "1px solid rgba(170,255,0,0.3)" : "1px solid var(--border-subtle)",
+                          position: "relative",
+                          aspectRatio: "1 / 0.92",
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 7,
+                          padding: "12px 8px",
+                          borderRadius: 14,
+                          textAlign: "center",
+                          background: done ? "rgba(170,255,0,0.08)" : "var(--surface-elevated)",
+                          border: done ? "1.5px solid rgba(170,255,0,0.4)" : "1px solid var(--border-subtle)",
                           cursor: tickable ? "pointer" : "default",
                         }}
                       >
                         <span
                           style={{
-                            flex: "none",
-                            width: 22,
-                            height: 22,
+                            position: "absolute",
+                            top: 8,
+                            right: 8,
+                            width: 20,
+                            height: 20,
                             borderRadius: "50%",
                             border: done ? "none" : "2px solid var(--border-color)",
                             background: done ? "var(--lime-400)" : "transparent",
@@ -447,18 +553,17 @@ export default function ExercisePage() {
                             color: "#0A0C0F",
                           }}
                         >
-                          {busy ? <Loader2 size={12} className="animate-spin" style={{ color: "var(--text-tertiary)" }} /> : done ? <Check size={13} /> : null}
+                          {busy ? <Loader2 size={11} className="animate-spin" style={{ color: "var(--text-tertiary)" }} /> : done ? <Check size={12} /> : null}
                         </span>
-                        <span style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ display: "block", fontSize: 14, fontWeight: 600, color: done ? "var(--text-tertiary)" : "var(--text-primary)", textDecoration: done ? "line-through" : "none" }}>
-                            {item.name}
+                        <ItemIcon size={22} style={{ color: done ? "var(--lime-400)" : "var(--lime-600)" }} />
+                        <span style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.3, color: done ? "var(--text-tertiary)" : "var(--text-primary)", textDecoration: done ? "line-through" : "none", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                          {item.name}
+                        </span>
+                        {item.sets !== null && (
+                          <span className="cl-mono" style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
+                            {item.sets}×{item.reps}
                           </span>
-                          {item.sets !== null && (
-                            <span className="cl-mono" style={{ display: "block", fontSize: 11.5, color: "var(--text-tertiary)", marginTop: 1 }}>
-                              {item.sets}×{item.reps}
-                            </span>
-                          )}
-                        </span>
+                        )}
                       </button>
                     );
                   })}
@@ -479,23 +584,48 @@ export default function ExercisePage() {
                     No exercises logged for this day. Add an exercise from the Muscle Library to log sets.
                   </p>
                 )}
-                {todayWorkout.map((exercise, index) => (
-                  <div key={`${exercise.name}-${index}`} style={{ display: "flex", alignItems: "center", gap: 14, padding: 14, background: "var(--surface-elevated)", borderRadius: 12 }}>
-                    {exercise.thumb && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={exercise.thumb} alt="" style={{ flex: "none", width: 36, height: 36, borderRadius: 9, objectFit: "cover" }} />
-                    )}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", textTransform: "capitalize" }}>{exercise.name}</div>
-                      <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2, textTransform: "capitalize" }}>
-                        {[exercise.muscle, exercise.sets, exercise.weight].filter(Boolean).join(" · ")}
-                      </div>
-                    </div>
-                    <span style={{ fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: "var(--radius-full)", background: "rgba(170, 255, 0, 0.12)", color: "var(--lime-600)" }}>
-                      Done
-                    </span>
+                {todayWorkout.length > 0 && (
+                  <div className="plan-tiles" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                    {todayWorkout.map((exercise, index) => {
+                      const LogIcon = exerciseIconFor(exercise.name);
+                      return (
+                        <div
+                          key={`${exercise.name}-${index}`}
+                          style={{
+                            position: "relative",
+                            aspectRatio: "1 / 0.92",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 6,
+                            padding: "12px 8px",
+                            borderRadius: 14,
+                            textAlign: "center",
+                            background: "var(--surface-elevated)",
+                            border: "1px solid var(--border-subtle)",
+                          }}
+                        >
+                          <span style={{ position: "absolute", top: 8, right: 8, fontSize: 9.5, fontWeight: 700, padding: "3px 8px", borderRadius: "var(--radius-full)", background: "rgba(170, 255, 0, 0.12)", color: "var(--lime-600)" }}>
+                            DONE
+                          </span>
+                          {exercise.thumb ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={exercise.thumb} alt="" style={{ width: 34, height: 34, borderRadius: 9, objectFit: "cover" }} />
+                          ) : (
+                            <LogIcon size={22} style={{ color: "var(--lime-600)" }} />
+                          )}
+                          <span style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.3, color: "var(--text-primary)", textTransform: "capitalize", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                            {exercise.name}
+                          </span>
+                          <span className="cl-mono" style={{ fontSize: 10.5, color: "var(--text-tertiary)", textTransform: "capitalize" }}>
+                            {[exercise.sets, exercise.weight !== "0lbs" ? exercise.weight : ""].filter(Boolean).join(" · ")}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
+                )}
 
                 {/* AI quick-log: type it or attach a short video */}
                 <div style={{ padding: "12px 13px", borderRadius: 12, background: "var(--surface-elevated)", border: "1px solid var(--border-subtle)" }}>

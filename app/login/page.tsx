@@ -89,9 +89,9 @@ export default function LoginScreen() {
         return "SMS limit reached for now. Please try again later or sign in another way.";
       }
       if (code === "auth/operation-not-allowed" || code === "auth/billing-not-enabled") {
-        return "Phone sign-in isn't enabled for this app yet. Please use email or Google.";
+        return `Phone sign-in isn't available right now (${code}). Please use email or Google.`;
       }
-      return friendlyAuthError(err);
+      return code ? `${friendlyAuthError(err)} (${code})` : friendlyAuthError(err);
     },
     [friendlyAuthError]
   );
@@ -668,7 +668,7 @@ export default function LoginScreen() {
                 {phoneLoading ? "Sending OTP…" : "Send OTP"}
               </button>
               <p style={{ margin: "14px 0 0", fontSize: 12.5, lineHeight: 1.5, color: "var(--text-tertiary)", textAlign: "center" }}>
-                We&apos;ll text you a 6-digit code. Standard SMS rates may apply.
+                We&apos;ll text you a 6-digit code.
               </p>
             </div>
           )}

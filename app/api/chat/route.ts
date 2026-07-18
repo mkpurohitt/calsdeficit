@@ -44,9 +44,13 @@ function isExerciseRequest(message: string) {
   return exerciseIntentWords.some((word) => msgLower.includes(word)) || detectMuscles(message).length > 0;
 }
 
-/** "I ate…", "calories in…", "I had X for lunch" → structured food card. */
+/** "I ate/eat…", "calories in/of…", "give calories", "I had X for lunch" → structured food card. */
 function isFoodLogIntent(message: string) {
-  return /(\bi (just )?(ate|had|drank)\b|\bfor (breakfast|lunch|dinner|snacks?)\b|\bcalories? in\b|\bhow (many|much) calories\b|\bkcal in\b|\bnutrition (of|in)\b|\bmacros (of|in|for)\b|\blog (my )?(food|meal)\b)/i.test(message);
+  // Advice-style questions ("how many calories should I eat per day") stay in normal chat.
+  if (/\bshould\b|\bper day\b|\bdaily (intake|target|calories)\b|\bdeficit\b|\bburn(ed|t)?\b|\btdee\b/i.test(message)) {
+    return false;
+  }
+  return /(\bi\s+(just\s+)?(ate|eat|had|have|drank|drink|consumed|am having|have eaten)\b|\bfor (breakfast|lunch|dinner|snacks?)\b|\bcalories?\s*(in|of|for)?\b|\bkcal\b|\bnutrition (of|in|for)\b|\bmacros? (of|in|for)?\b|\blog (my )?(food|meal)\b)/i.test(message);
 }
 
 /** "I did bench 4x8", "log squats 3 sets of 10" → structured workout log. */

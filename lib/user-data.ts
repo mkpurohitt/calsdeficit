@@ -9,6 +9,7 @@ import type {
   FormAnalysisRecord,
   NotificationPreferenceRecord,
   UserGoalRecord,
+  ScanHistoryRecord,
   WorkoutLogRecord,
 } from "./data/types";
 
@@ -18,6 +19,7 @@ export type {
   FoodLogRecord,
   FormAnalysisRecord,
   NotificationPreferenceRecord,
+  ScanHistoryRecord,
   UserGoalRecord,
   WorkoutLogRecord,
 };
@@ -55,6 +57,10 @@ export const getFormAnalyses = (userId: string) => store.getFormAnalyses(userId)
 export const getDay = (userId: string, dateKey: string) => store.getDay(userId, dateKey);
 export const saveDay = (userId: string, dateKey: string, patch: Partial<DayRecord>) =>
   store.saveDay(userId, dateKey, patch);
+
+export const addScanHistory = (record: Omit<ScanHistoryRecord, "id">) => store.addScanHistory(record);
+export const getScanHistory = (userId: string, limit?: number) => store.getScanHistory(userId, limit);
+export const deleteScanHistory = (userId: string, id: string) => store.deleteScanHistory(userId, id);
 
 export const saveNotificationPreferences = (record: NotificationPreferenceRecord) =>
   store.saveNotificationPreferences(record);

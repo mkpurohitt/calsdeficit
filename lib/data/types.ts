@@ -91,6 +91,22 @@ export interface NotificationPreferenceRecord {
   weekly_summary: boolean;
 }
 
+/** Compressed record of an AI food scan the user has NOT logged yet
+ * (created from the Home chat; removed once added to the diary). */
+export interface ScanHistoryRecord {
+  id?: string;
+  user_id: string;
+  food_name: string;
+  portion: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g: number;
+  photo_thumb?: string;
+  created_at: string;
+}
+
 export interface DateRange {
   from: string;
   to: string;

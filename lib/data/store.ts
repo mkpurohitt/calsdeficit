@@ -4,6 +4,7 @@ import type {
   FoodLogRecord,
   FormAnalysisRecord,
   NotificationPreferenceRecord,
+  ScanHistoryRecord,
   UserGoalRecord,
   WorkoutLogRecord,
 } from "./types";
@@ -27,4 +28,8 @@ export interface UserDataStore {
 
   saveNotificationPreferences(record: NotificationPreferenceRecord): Promise<void>;
   getNotificationPreferences(userId: string): Promise<NotificationPreferenceRecord>;
+
+  addScanHistory(record: Omit<ScanHistoryRecord, "id">): Promise<ScanHistoryRecord | null>;
+  getScanHistory(userId: string, limit?: number): Promise<ScanHistoryRecord[]>;
+  deleteScanHistory(userId: string, id: string): Promise<void>;
 }
