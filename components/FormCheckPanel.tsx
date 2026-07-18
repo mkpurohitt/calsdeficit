@@ -4,6 +4,7 @@
 import { useRef, useState } from "react";
 import { Camera, CheckCircle2, Loader2, ShieldCheck, Sparkles } from "lucide-react";
 import { apiFetch } from "../lib/api-client";
+import { makeVideoThumb } from "../lib/image-compress";
 import AdCard from "./ads/AdCard";
 
 export interface FormAnalysisResult {
@@ -56,10 +57,12 @@ export default function FormCheckPanel({ onResult }: FormCheckPanelProps) {
       });
 
       setStage("scoring");
+      // Tiny frame from the video so past form checks can show a preview.
+      const thumb = await makeVideoThumb(file);
       const res = await apiFetch("/api/form-analysis", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ telemetry }),
+        body: JSON.stringify({ telemetry, thumb }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Analysis failed.");

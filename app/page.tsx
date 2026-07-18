@@ -3,15 +3,15 @@ import { useState, useEffect, useCallback, useRef, ChangeEvent, KeyboardEvent } 
 import { useAuth } from "../lib/AuthContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Send, Camera, Video, Paperclip, Plus, X, PlayCircle, Activity, Loader2 } from "lucide-react";
-import ReactMarkdown from 'react-markdown';
+import { Send, Video, Paperclip, Plus, X, PlayCircle, Activity, Loader2, Check, Dumbbell } from "lucide-react";
+import ReactMarkdown, { type Components } from "react-markdown";
 import AppLayout from "../components/AppLayout";
 import AdCard from "../components/ads/AdCard";
 import FoodScanCard from "../components/FoodScanCard";
 import { apiFetch } from "../lib/api-client";
-import { compressImage, fileToBase64 } from "../lib/image-compress";
+import { compressImage, fileToBase64, makeImageThumb, MAX_VIDEO_BYTES } from "../lib/image-compress";
 import type { FoodScanResult } from "../lib/schemas/food-scan";
-import { getFoodLogs, getUserGoal, getDay, getDateKey } from "../lib/user-data";
+import { getFoodLogs, getUserGoal, getDay, getDateKey, addFoodLog, saveWorkoutLog } from "../lib/user-data";
 import { STEP_GOAL } from "../lib/config/app";
 
 interface DailyStats {
@@ -24,12 +24,25 @@ interface DailyStats {
   hasGoal: boolean;
 }
 
+interface WorkoutParse {
+  exercise_name: string;
+  muscle_group: string;
+  sets: number;
+  reps: number;
+  weight_kg: number;
+  confidence: number;
+}
+
 interface Message {
   role: 'user' | 'ai';
   text: string;
+  /** Object-URL preview of an attached file (user messages). */
   file?: string | null;
+  /** Original File object — kept so "Add to diary" can build a photo thumb. */
+  fileObj?: File | null;
   exercises?: ExerciseResult[];
   scan?: FoodScanResult;
+  workout?: WorkoutParse;
   adKeywords?: string[];
   adsEnabled?: boolean;
 }
@@ -46,18 +59,133 @@ const INITIAL_MESSAGES: Message[] = [
   { role: "ai", text: "Hey! Upload a food photo to scan nutrients, or a workout video for form analysis. 📷🏋️" }
 ];
 
+/** Meal slot inferred from the current time of day. */
+function mealTypeByTime(): string {
+  const hour = new Date().getHours();
+  if (hour < 11) return "Breakfast";
+  if (hour < 15) return "Lunch";
+  if (hour < 18) return "Snacks";
+  return "Dinner";
+}
+
+const markdownComponents: Components = {
+  h1: ({...props}) => <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--lime-400)", marginBottom: 8, fontFamily: "var(--font-display)" }} {...props} />,
+  h2: ({...props}) => <h2 style={{ fontSize: 17, fontWeight: 700, color: "var(--lime-400)", marginBottom: 8, fontFamily: "var(--font-display)" }} {...props} />,
+  strong: ({...props}) => <span style={{ fontWeight: 700, color: "var(--lime-400)" }} {...props} />,
+  ul: ({...props}) => <ul style={{ listStyleType: "disc", paddingLeft: 16, marginBottom: 8 }} {...props} />,
+  li: ({...props}) => <li style={{ marginBottom: 4 }} {...props} />,
+  p: ({...props}) => <p style={{ marginBottom: 8 }} {...props} />,
+};
+
+/** Parsed-workout summary with a one-tap "Log to Exercise" save. */
+function WorkoutLogCard({ workout, onLog }: { workout: WorkoutParse; onLog: () => Promise<void> }) {
+  const [logState, setLogState] = useState<"idle" | "saving" | "saved">("idle");
+  const weightLbs = Math.round(workout.weight_kg * 2.20462);
+
+  const handleLog = async () => {
+    if (logState !== "idle") return;
+    setLogState("saving");
+    try {
+      await onLog();
+      setLogState("saved");
+    } catch (error) {
+      console.error("[home] workout log failed", error);
+      setLogState("idle");
+    }
+  };
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        background: "var(--surface-card)",
+        border: "1px solid var(--border-subtle)",
+        borderRadius: 12,
+        padding: "14px 16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+      }}
+    >
+      <div className="flex items-center" style={{ gap: 12 }}>
+        <span
+          style={{
+            flex: "none",
+            width: 40,
+            height: 40,
+            borderRadius: 10,
+            background: "var(--surface-elevated)",
+            border: "1px solid var(--border-subtle)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--lime-400)",
+          }}
+        >
+          <Dumbbell size={19} />
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="cl-disp" style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", textTransform: "capitalize" }}>
+            {workout.exercise_name}
+          </div>
+          <div className="cl-mono" style={{ fontSize: 12.5, color: "var(--text-secondary)", marginTop: 2 }}>
+            {workout.sets}×{workout.reps}
+            {workout.weight_kg > 0 ? ` · ${weightLbs} lbs` : ""}
+            {workout.muscle_group ? ` · ${workout.muscle_group}` : ""}
+          </div>
+        </div>
+      </div>
+
+      <button
+        onClick={handleLog}
+        disabled={logState !== "idle"}
+        className="flex items-center justify-center gap-2 w-full"
+        style={{
+          padding: "10px 14px",
+          borderRadius: 10,
+          border: "none",
+          background: logState === "saved" ? "rgba(170, 255, 0, 0.12)" : "var(--lime-400)",
+          color: logState === "saved" ? "var(--lime-400)" : "#0A0C0F",
+          fontSize: 13.5,
+          fontWeight: 700,
+          cursor: logState === "idle" ? "pointer" : "default",
+          transition: "background 0.15s ease, color 0.15s ease",
+        }}
+      >
+        {logState === "saved" ? (
+          <>
+            <Check size={15} /> Logged
+          </>
+        ) : logState === "saving" ? (
+          <>
+            <Loader2 size={15} className="animate-spin" /> Logging…
+          </>
+        ) : (
+          "Log to Exercise"
+        )}
+      </button>
+
+      <Link href="/exercise" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--lime-600)" }}>
+        Open Exercise page →
+      </Link>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { user, loading } = useAuth() as { user: { uid?: string } | null; loading: boolean };
   const router = useRouter();
 
   const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
   const [input, setInput] = useState<string>("");
-  const [mode, setMode] = useState<'chat' | 'food' | 'gym'>("chat");
   const [file, setFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [attachOpen, setAttachOpen] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [processingLabel, setProcessingLabel] = useState("Thinking...");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const attachRef = useRef<HTMLDivElement>(null);
 
   const [stats, setStats] = useState<DailyStats | null>(null);
 
@@ -105,33 +233,43 @@ export default function Dashboard() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Attach popover: close on outside click / Escape
   useEffect(() => {
-    const requestedMode = new URLSearchParams(window.location.search).get("mode");
-    if (requestedMode === "gym" || requestedMode === "food") {
-      setMode(requestedMode);
-    }
-  }, []);
-
-  const getFileTypes = () => {
-    if (mode === 'food') return "image/*";
-    if (mode === 'gym') return "video/*";
-    return "image/*";
-  };
-
-  const handleModeSwitch = (newMode: 'food' | 'gym') => {
-    setMode((current) => (current === newMode ? 'chat' : newMode));
-    setFile(null);
-  };
+    if (!attachOpen) return;
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      if (attachRef.current && !attachRef.current.contains(event.target as Node)) {
+        setAttachOpen(false);
+      }
+    };
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setAttachOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [attachOpen]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
+    const selected = e.target.files?.[0] ?? null;
+    e.target.value = ""; // allow re-selecting the same file
+    setAttachOpen(false);
+    if (!selected) return;
+    if (selected.type.startsWith("video/") && selected.size > MAX_VIDEO_BYTES) {
+      setFileError("Video too large — please keep it under 15 MB");
+      return;
     }
+    setFileError(null);
+    setFile(selected);
   };
 
-  const getProcessingLabel = (text: string, selectedMode: 'chat' | 'food' | 'gym', selectedFile: File | null) => {
-    if (selectedMode === 'food' || selectedFile?.type.startsWith('image/')) return "Calculating calories...";
-    if (selectedMode === 'gym' || selectedFile?.type.startsWith('video/')) return "Analyzing form...";
+  const getProcessingLabel = (text: string, selectedFile: File | null) => {
+    if (selectedFile?.type.startsWith('image/')) return "Calculating calories...";
+    if (selectedFile?.type.startsWith('video/')) return "Analyzing form...";
 
     const lower = text.toLowerCase();
     const exerciseWords = ["exercise", "exercises", "workout", "chest", "back", "legs", "arms", "shoulders", "abs", "core"];
@@ -140,13 +278,55 @@ export default function Dashboard() {
     return "Thinking through your health query...";
   };
 
+  // "Add to diary" on food-scan cards → real FoodLogRecord (+ tiny photo thumb when available)
+  const handleAddToDiary = useCallback(async (scan: FoodScanResult, sourceFile?: File | null) => {
+    if (!user?.uid) throw new Error("Not signed in");
+    const photoThumb = sourceFile ? await makeImageThumb(sourceFile) : null;
+    await addFoodLog({
+      user_id: user.uid,
+      food_name: scan.food_name,
+      portion: scan.portion,
+      calories: scan.calories,
+      protein_g: scan.protein_g,
+      carbs_g: scan.carbs_g,
+      fat_g: scan.fat_g,
+      fiber_g: scan.fiber_g,
+      meal_type: mealTypeByTime(),
+      health_tip: scan.health_tip,
+      source: scan.source,
+      verified: scan.verified,
+      confidence: scan.confidence,
+      ...(photoThumb ? { photo_thumb: photoThumb } : {}),
+      date_key: getDateKey(),
+      date: new Date().toISOString(),
+    });
+    loadStats(); // refresh "calories remaining" in the right rail
+  }, [user, loadStats]);
+
+  // "Log to Exercise" on parsed workout messages → real WorkoutLogRecord
+  const handleLogWorkout = useCallback(async (workout: WorkoutParse) => {
+    if (!user?.uid) throw new Error("Not signed in");
+    await saveWorkoutLog({
+      user_id: user.uid,
+      exercise_id: 'chat-' + Date.now(),
+      exercise_name: workout.exercise_name,
+      muscle_group: workout.muscle_group,
+      sets: workout.sets,
+      reps: workout.reps,
+      weight_lbs: Math.round(workout.weight_kg * 2.20462),
+      date_key: getDateKey(),
+      logged_at: new Date().toISOString(),
+    });
+  }, [user]);
+
   const handleSend = async () => {
     if (!input.trim() && !file) return;
 
     const userMsg: Message = {
       role: "user",
       text: input,
-      file: file ? URL.createObjectURL(file) : null
+      file: file ? URL.createObjectURL(file) : null,
+      fileObj: file,
     };
 
     setMessages((prev) => [...prev, userMsg]);
@@ -154,14 +334,13 @@ export default function Dashboard() {
 
     const currentInput = input;
     const currentFile = file;
-    const currentMode = mode;
-    setProcessingLabel(getProcessingLabel(currentInput, currentMode, currentFile));
+    setProcessingLabel(getProcessingLabel(currentInput, currentFile));
     setInput("");
     setFile(null);
 
     try {
-      let fileData = null;
-      let mimeType = null;
+      let fileData: string | null = null;
+      let mimeType: string | null = null;
 
       if (currentFile) {
         // Images are standardized on-device (≤768px / 75% JPEG) so each scan
@@ -173,6 +352,7 @@ export default function Dashboard() {
         mimeType = prepared.type;
       }
 
+      // The server auto-detects intent from the file type / message text — no mode flag.
       const response = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -180,7 +360,6 @@ export default function Dashboard() {
           message: currentInput,
           fileData: fileData,
           mimeType: mimeType,
-          mode: currentMode,
         })
       });
 
@@ -192,6 +371,16 @@ export default function Dashboard() {
             role: "ai",
             text: "",
             scan: data.scan as FoodScanResult,
+            // keep the source image around so "Add to diary" can attach a thumb
+            fileObj: currentFile?.type.startsWith("image/") ? currentFile : null,
+            adKeywords: data.adKeywords || [],
+            adsEnabled: data.adsEnabled ?? true,
+          }]);
+        } else if (data.kind === 'workout-log' && data.workout) {
+          setMessages((prev) => [...prev, {
+            role: "ai",
+            text: typeof data.data === 'string' ? data.data : "",
+            workout: data.workout as WorkoutParse,
             adKeywords: data.adKeywords || [],
             adsEnabled: data.adsEnabled ?? true,
           }]);
@@ -221,12 +410,18 @@ export default function Dashboard() {
   };
 
   // Right-rail suggestions. Each click wires to an EXISTING handler
-  // (mode switch or prefilling the input) — no new APIs introduced.
+  // (opening the attach menu or prefilling the input) — no new APIs introduced.
   const suggestions: { t: string; s: string; go: () => void }[] = [
-    { t: "Scan a meal", s: "Snap a photo, get instant macros", go: () => handleModeSwitch('food') },
-    { t: "Check my form", s: "Upload a clip for AI analysis", go: () => handleModeSwitch('gym') },
-    { t: "Plan my macros", s: "Hit your protein target today", go: () => { setMode('chat'); setInput("Help me plan my macros to hit my protein target today."); } },
-    { t: "What should I eat?", s: "Ideas for a balanced day", go: () => { setMode('chat'); setInput("What should I eat for a balanced, high-protein day?"); } },
+    { t: "Scan a meal", s: "Snap a photo, get instant macros", go: () => setAttachOpen(true) },
+    { t: "Check my form", s: "Upload a clip for AI analysis", go: () => setAttachOpen(true) },
+    { t: "Plan my macros", s: "Hit your protein target today", go: () => setInput("Help me plan my macros to hit my protein target today.") },
+    { t: "What should I eat?", s: "Ideas for a balanced day", go: () => setInput("What should I eat for a balanced, high-protein day?") },
+  ];
+
+  const attachOptions: { label: string; accept: string; capture?: "environment" }[] = [
+    { label: "📷 Take photo", accept: "image/*", capture: "environment" },
+    { label: "🖼️ Upload photo", accept: "image/*" },
+    { label: "🎥 Upload video", accept: "video/*" },
   ];
 
   if (loading) return (
@@ -265,6 +460,10 @@ export default function Dashboard() {
               className="flex-1 overflow-y-auto"
               style={{ padding: "8px 4px 24px", display: "flex", flexDirection: "column", gap: 16 }}
             >
+              {/* Bottom-anchor spacer: pushes short conversations to the bottom
+                  (ChatGPT/Claude style); collapses to 0 once content overflows. */}
+              <div style={{ flexGrow: 1 }} aria-hidden="true" />
+
               {messages.map((msg, idx) => (
                 <div
                   key={idx}
@@ -277,12 +476,19 @@ export default function Dashboard() {
                   >
                     {/* File preview */}
                     {msg.file && (
-                      <img
-                        src={msg.file}
-                        alt="upload"
-                        className="mb-2"
-                        style={{ borderRadius: "var(--radius-md)", maxHeight: 160, objectFit: "cover" }}
-                      />
+                      msg.fileObj?.type.startsWith("video/") ? (
+                        <div className="flex items-center gap-2 mb-2" style={{ fontSize: 12.5, color: "var(--text-secondary)" }}>
+                          <Video size={14} style={{ flexShrink: 0 }} />
+                          <span className="truncate">{msg.fileObj.name}</span>
+                        </div>
+                      ) : (
+                        <img
+                          src={msg.file}
+                          alt="upload"
+                          className="mb-2"
+                          style={{ borderRadius: "var(--radius-md)", maxHeight: 160, objectFit: "cover" }}
+                        />
+                      )
                     )}
 
                     {/* 1. FOOD SCAN CARD (structured pipeline) */}
@@ -291,9 +497,23 @@ export default function Dashboard() {
                         scan={msg.scan}
                         adKeywords={msg.adKeywords}
                         adsEnabled={msg.adsEnabled}
+                        onAdd={() => handleAddToDiary(msg.scan as FoodScanResult, msg.fileObj)}
                       />
 
-                    // 2. GYM MODE CARD
+                    // 2. PARSED WORKOUT LOG
+                    ) : msg.role === 'ai' && msg.workout ? (
+                      <div style={{ fontSize: 14, lineHeight: 1.6 }}>
+                        {msg.text && (
+                          <ReactMarkdown components={markdownComponents}>{msg.text}</ReactMarkdown>
+                        )}
+                        <WorkoutLogCard
+                          workout={msg.workout}
+                          onLog={() => handleLogWorkout(msg.workout as WorkoutParse)}
+                        />
+                        <AdCard keywords={msg.adKeywords} enabled={msg.adsEnabled} />
+                      </div>
+
+                    // 3. GYM VIDEO CARD (form analysis)
                     ) : msg.role === 'ai' && msg.text.includes('SEARCH_QUERY:') ? (
                       (() => {
                         const parts = msg.text.split('SEARCH_QUERY:');
@@ -322,26 +542,21 @@ export default function Dashboard() {
                             >
                               <PlayCircle size={16} /> Watch Correct Form
                             </a>
+                            <Link
+                              href="/exercise"
+                              style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12.5, fontWeight: 600, color: "var(--lime-600)" }}
+                            >
+                              Log it on the Exercise page →
+                            </Link>
                             <AdCard keywords={msg.adKeywords} enabled={msg.adsEnabled} />
                           </div>
                         );
                       })()
 
-                    // 3. NORMAL TEXT
+                    // 4. NORMAL TEXT
                     ) : (
                       <div style={{ fontSize: 14, lineHeight: 1.6 }}>
-                        <ReactMarkdown
-                          components={{
-                            h1: ({...props}) => <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--lime-400)", marginBottom: 8, fontFamily: "var(--font-display)" }} {...props} />,
-                            h2: ({...props}) => <h2 style={{ fontSize: 17, fontWeight: 700, color: "var(--lime-400)", marginBottom: 8, fontFamily: "var(--font-display)" }} {...props} />,
-                            strong: ({...props}) => <span style={{ fontWeight: 700, color: "var(--lime-400)" }} {...props} />,
-                            ul: ({...props}) => <ul style={{ listStyleType: "disc", paddingLeft: 16, marginBottom: 8 }} {...props} />,
-                            li: ({...props}) => <li style={{ marginBottom: 4 }} {...props} />,
-                            p: ({...props}) => <p style={{ marginBottom: 8 }} {...props} />,
-                          }}
-                        >
-                          {msg.text}
-                        </ReactMarkdown>
+                        <ReactMarkdown components={markdownComponents}>{msg.text}</ReactMarkdown>
                         {msg.exercises && msg.exercises.length > 0 && (
                           <div className="grid gap-3 mt-3">
                             {msg.exercises.map((ex) => (
@@ -425,46 +640,6 @@ export default function Dashboard() {
 
             {/* Composer */}
             <div style={{ padding: "16px 4px 0" }}>
-              {/* Mode chips (kept for the food/gym pipelines) */}
-              <div className="flex" style={{ gap: 9, marginBottom: 12, flexWrap: "wrap" }}>
-                <button
-                  onClick={() => handleModeSwitch('food')}
-                  className="flex items-center"
-                  style={{
-                    gap: 7,
-                    padding: "8px 14px",
-                    borderRadius: 99,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    background: mode === 'food' ? "var(--lime-400)" : "var(--surface-elevated)",
-                    color: mode === 'food' ? "#0A0C0F" : "var(--text-secondary)",
-                    border: mode === 'food' ? "1px solid var(--lime-400)" : "1px solid var(--border-color)",
-                    transition: "all 0.15s ease",
-                  }}
-                >
-                  <Camera size={15} /> Scan Food
-                </button>
-                <button
-                  onClick={() => handleModeSwitch('gym')}
-                  className="flex items-center"
-                  style={{
-                    gap: 7,
-                    padding: "8px 14px",
-                    borderRadius: 99,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    background: mode === 'gym' ? "var(--lime-400)" : "var(--surface-elevated)",
-                    color: mode === 'gym' ? "#0A0C0F" : "var(--text-secondary)",
-                    border: mode === 'gym' ? "1px solid var(--lime-400)" : "1px solid var(--border-color)",
-                    transition: "all 0.15s ease",
-                  }}
-                >
-                  <Video size={15} /> Gym Form
-                </button>
-              </div>
-
               {/* Input row */}
               <div
                 className="flex items-center"
@@ -476,30 +651,79 @@ export default function Dashboard() {
                   padding: "8px 8px 8px 14px",
                 }}
               >
-                <label
-                  style={{
-                    flex: "none",
-                    width: 34,
-                    height: 34,
-                    borderRadius: 9,
-                    border: "1px solid var(--border-color)",
-                    background: "var(--surface-card)",
-                    color: "var(--text-secondary)",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                  title="Attach a photo or video"
-                >
-                  {mode === 'gym' ? <Video size={18} /> : mode === 'food' ? <Camera size={18} /> : <Plus size={18} />}
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept={getFileTypes()}
-                    onChange={handleFileChange}
-                  />
-                </label>
+                {/* Attach button + popover menu */}
+                <div ref={attachRef} style={{ position: "relative", flex: "none" }}>
+                  <button
+                    onClick={() => setAttachOpen((open) => !open)}
+                    aria-label="Attach a photo or video"
+                    aria-expanded={attachOpen}
+                    title="Attach a photo or video"
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 9,
+                      border: "1px solid var(--border-color)",
+                      background: "var(--surface-card)",
+                      color: "var(--text-secondary)",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Plus size={18} style={{ transform: attachOpen ? "rotate(45deg)" : "none", transition: "transform 0.15s ease" }} />
+                  </button>
+
+                  {attachOpen && (
+                    <div
+                      role="menu"
+                      style={{
+                        position: "absolute",
+                        bottom: "calc(100% + 10px)",
+                        left: 0,
+                        zIndex: 40,
+                        minWidth: 190,
+                        padding: 6,
+                        background: "var(--surface-card)",
+                        border: "1px solid var(--border-color)",
+                        borderRadius: 12,
+                        boxShadow: "var(--shadow-card)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 2,
+                      }}
+                    >
+                      {attachOptions.map((opt) => (
+                        <label
+                          key={opt.label}
+                          className="cl-attach-item"
+                          role="menuitem"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            padding: "9px 10px",
+                            borderRadius: 8,
+                            fontSize: 13.5,
+                            fontWeight: 600,
+                            color: "var(--text-primary)",
+                            cursor: "pointer",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {opt.label}
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept={opt.accept}
+                            capture={opt.capture}
+                            onChange={handleFileChange}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
                 <input
                   type="text"
@@ -509,9 +733,7 @@ export default function Dashboard() {
                   placeholder={
                     file
                       ? `Attached: ${file.name}`
-                      : mode === 'chat'
-                      ? "Ask anything about your nutrition or training…"
-                      : `Ask about your ${mode}…`
+                      : "Ask anything about your nutrition or training…"
                   }
                   style={{
                     flex: 1,
@@ -557,6 +779,20 @@ export default function Dashboard() {
                     onClick={() => setFile(null)}
                     style={{ color: "var(--text-tertiary)", background: "none", border: "none", cursor: "pointer", fontSize: 12, display: "inline-flex" }}
                     aria-label="Remove file"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              )}
+
+              {/* File error (e.g. oversized video) */}
+              {fileError && (
+                <div className="flex items-center gap-2 mt-2" style={{ fontSize: 12, color: "var(--error)" }}>
+                  <span>{fileError}</span>
+                  <button
+                    onClick={() => setFileError(null)}
+                    style={{ color: "var(--text-tertiary)", background: "none", border: "none", cursor: "pointer", fontSize: 12, display: "inline-flex" }}
+                    aria-label="Dismiss error"
                   >
                     <X size={13} />
                   </button>
@@ -677,6 +913,12 @@ export default function Dashboard() {
           grid-template-columns: minmax(0, 1fr) 330px;
           gap: 20px;
           align-items: start;
+        }
+        .cl-attach-item {
+          transition: background 0.12s ease;
+        }
+        .cl-attach-item:hover {
+          background: var(--surface-elevated);
         }
         @media (max-width: 860px) {
           .cl-home {

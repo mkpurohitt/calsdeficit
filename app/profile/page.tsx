@@ -190,21 +190,37 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* Free Plan / usage card */}
+            {/* Plan + usage card (counts live on the Usage page, Claude-style) */}
             <div style={{ position: "relative", overflow: "hidden", background: "var(--surface-card)", border: "1px solid rgba(170,255,0,.3)", borderRadius: 18, padding: 24, boxShadow: "0 0 24px rgba(170,255,0,.06)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 18 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 16 }}>
                 <Award size={20} style={{ color: "var(--lime-400)" }} />
                 <span style={{ fontWeight: 700, fontSize: 16, color: "var(--text-primary)" }}>
                   {tier === "premium" ? "Premium Plan" : "Free Plan"}
                 </span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--text-secondary)", marginBottom: 7 }}>
-                <span>AI prompts used today</span>
-                <span className="cl-mono">{promptsUsed} / {promptLimit}</span>
-              </div>
-              <div style={{ height: 7, background: "var(--surface-elevated)", borderRadius: "var(--radius-full)", overflow: "hidden", marginBottom: 20 }}>
-                <div style={{ height: "100%", width: `${usagePct}%`, background: "var(--lime-400)", borderRadius: "var(--radius-full)", transition: "width .7s cubic-bezier(.34,1.56,.64,1)" }} />
-              </div>
+
+              <Link
+                href="/profile/usage"
+                className="cl-card-hover flex items-center"
+                style={{
+                  gap: 12,
+                  padding: "13px 15px",
+                  borderRadius: 12,
+                  background: "var(--surface-elevated)",
+                  border: "1px solid var(--border-subtle)",
+                  textDecoration: "none",
+                  marginBottom: 18,
+                }}
+              >
+                <span style={{ flex: 1 }}>
+                  <span style={{ display: "block", fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>Usage</span>
+                  <span style={{ display: "block", fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>
+                    {usagePct}% of your 24-hour window used
+                  </span>
+                </span>
+                <ChevronRight size={17} style={{ color: "var(--text-tertiary)" }} />
+              </Link>
+
               {tier !== "premium" && (
                 <>
                   <Link
@@ -215,7 +231,7 @@ export default function ProfilePage() {
                     Upgrade to Premium
                   </Link>
                   <div style={{ textAlign: "center", fontSize: 12, color: "var(--text-tertiary)", marginTop: 12 }}>
-                    100 prompts/day · no ads — coming soon
+                    5× more usage · no ads — coming soon
                   </div>
                 </>
               )}

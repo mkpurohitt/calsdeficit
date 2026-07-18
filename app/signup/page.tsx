@@ -1,10 +1,19 @@
 "use client";
-import { useState } from "react";
-import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, updateProfile } from "firebase/auth";
+import { useState, useRef } from "react";
+import {
+  createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup,
+  updateProfile,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+  sendSignInLinkToEmail,
+  type ConfirmationResult,
+} from "firebase/auth";
 import { auth } from "../../lib/firebase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Eye, EyeOff, Activity, Utensils, Dumbbell, Sun, Moon, Check } from "lucide-react";
+import { Eye, EyeOff, Activity, Utensils, Dumbbell, Sun, Moon, Check, Mail, Smartphone, MailCheck } from "lucide-react";
 import { useTheme } from "next-themes";
 import React from "react";
 
@@ -17,10 +26,39 @@ export default function SignupPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
   const [agreed, setAgreed] = useState(false);
+  const [method, setMethod] = useState<"email" | "phone">("email");
+  // phone flow
+  const [phoneCode, setPhoneCode] = useState("+91");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [sentTo, setSentTo] = useState("");
+  const [phoneLoading, setPhoneLoading] = useState(false);
+  // email-link flow
+  const [linkSent, setLinkSent] = useState(false);
+  const [linkLoading, setLinkLoading] = useState(false);
+
+  const recaptchaRef = useRef<HTMLDivElement>(null);
+  const verifierRef = useRef<RecaptchaVerifier | null>(null);
+  const confirmationRef = useRef<ConfirmationResult | null>(null);
+
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
+
+  // Tear the reCAPTCHA widget down when the page unmounts so re-renders /
+  // client navigations never leave a stale verifier behind.
+  React.useEffect(() => {
+    return () => {
+      try {
+        verifierRef.current?.clear();
+      } catch {
+        /* already cleared */
+      }
+      verifierRef.current = null;
+    };
+  }, []);
 
   const friendlyAuthError = React.useCallback((err: unknown) => {
     const authError = err as { code?: string; message?: string };
@@ -30,9 +68,48 @@ export default function SignupPage() {
     return authError.message?.replace(/^Firebase:\s*/i, "").replace(/\s*\([^)]+\)\.?$/, "") || "Google sign-in failed. Please try again.";
   }, []);
 
-  React.useEffect(() => {
-    // Popup logic used instead
-  }, [friendlyAuthError, router]);
+  const friendlyPhoneError = React.useCallback(
+    (err: unknown) => {
+      const code = (err as { code?: string })?.code || "";
+      if (code === "auth/invalid-phone-number" || code === "auth/missing-phone-number") {
+        return "That phone number doesn't look valid. Include the country code, e.g. +91 98765 43210.";
+      }
+      if (code === "auth/invalid-verification-code") {
+        return "That code isn't right. Double-check the 6 digits and try again.";
+      }
+      if (code === "auth/code-expired") {
+        return "That code has expired. Tap Resend code to get a new one.";
+      }
+      if (code === "auth/too-many-requests") {
+        return "Too many attempts. Please wait a few minutes before trying again.";
+      }
+      if (code === "auth/quota-exceeded") {
+        return "SMS limit reached for now. Please try again later or sign up another way.";
+      }
+      if (code === "auth/operation-not-allowed" || code === "auth/billing-not-enabled") {
+        return "Phone sign-up isn't enabled for this app yet. Please use email or Google.";
+      }
+      return friendlyAuthError(err);
+    },
+    [friendlyAuthError]
+  );
+
+  const resetRecaptcha = () => {
+    try {
+      verifierRef.current?.clear();
+    } catch {
+      /* already cleared */
+    }
+    verifierRef.current = null;
+    if (recaptchaRef.current) recaptchaRef.current.innerHTML = "";
+  };
+
+  const getVerifier = () => {
+    if (!verifierRef.current && recaptchaRef.current) {
+      verifierRef.current = new RecaptchaVerifier(auth, recaptchaRef.current, { size: "invisible" });
+    }
+    return verifierRef.current;
+  };
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,6 +147,133 @@ export default function SignupPage() {
     }
   };
 
+  const handleSendLink = async () => {
+    setError("");
+    if (!email || !/\S+@\S+\.\S+/.test(email)) {
+      setError("Enter your email address above first, then we'll send you a sign-in link.");
+      return;
+    }
+    if (!agreed) {
+      setError("You must agree to the Terms of Service and Privacy Policy");
+      return;
+    }
+    setLinkLoading(true);
+    try {
+      await sendSignInLinkToEmail(auth, email, {
+        url: window.location.origin + "/auth/verify",
+        handleCodeInApp: true,
+      });
+      window.localStorage.setItem("calolean_email_for_signin", email);
+      setLinkSent(true);
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code || "";
+      if (code === "auth/operation-not-allowed") {
+        setError("Email-link sign-in isn't enabled for this app yet. Please use a password or Google.");
+      } else {
+        setError(friendlyAuthError(err));
+      }
+    } finally {
+      setLinkLoading(false);
+    }
+  };
+
+  const handleSendOtp = async () => {
+    setError("");
+    if (!agreed) {
+      setError("You must agree to the Terms of Service and Privacy Policy");
+      return;
+    }
+    const raw = (phoneCode.trim() + phoneNumber).replace(/[\s()-]/g, "");
+    const e164 = raw.startsWith("+") ? raw : "+" + raw;
+    if (!/^\+\d{7,15}$/.test(e164)) {
+      setError("Enter a valid phone number, e.g. +91 98765 43210.");
+      return;
+    }
+    setPhoneLoading(true);
+    try {
+      const verifier = getVerifier();
+      if (!verifier) throw new Error("reCAPTCHA is not ready. Please try again.");
+      confirmationRef.current = await signInWithPhoneNumber(auth, e164, verifier);
+      setSentTo(e164);
+      setOtp("");
+      setOtpSent(true);
+    } catch (err: unknown) {
+      resetRecaptcha();
+      setError(friendlyPhoneError(err));
+    } finally {
+      setPhoneLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    setError("");
+    if (!/^\d{6}$/.test(otp)) {
+      setError("Enter the 6-digit code we sent you.");
+      return;
+    }
+    if (!confirmationRef.current) {
+      setError("Please request a new code.");
+      setOtpSent(false);
+      return;
+    }
+    setPhoneLoading(true);
+    try {
+      await confirmationRef.current.confirm(otp);
+      router.push("/onboarding");
+    } catch (err: unknown) {
+      setError(friendlyPhoneError(err));
+      setPhoneLoading(false);
+    }
+  };
+
+  const termsRow = (withHiddenInput: boolean) => (
+    <div
+      onClick={() => setAgreed(!agreed)}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 11,
+        marginBottom: 22,
+        cursor: "pointer",
+      }}
+    >
+      <span
+        style={{
+          flex: "none",
+          width: 20,
+          height: 20,
+          borderRadius: 6,
+          border: `1.5px solid ${agreed ? "var(--lime-400)" : "var(--border-color)"}`,
+          background: agreed ? "var(--lime-400)" : "var(--input-bg)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#0A0C0F",
+        }}
+      >
+        {agreed && <Check size={14} strokeWidth={3} />}
+      </span>
+      {/* hidden input preserves required validation + checked state wiring */}
+      {withHiddenInput && (
+        <input
+          id="terms"
+          type="checkbox"
+          checked={agreed}
+          onChange={(e) => setAgreed(e.target.checked)}
+          required
+          style={{ position: "absolute", opacity: 0, width: 0, height: 0, pointerEvents: "none" }}
+          tabIndex={-1}
+          aria-hidden="true"
+        />
+      )}
+      <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+        I agree to the{" "}
+        <span style={{ color: "var(--lime-600)", fontWeight: 600 }}>Terms of Service</span> and{" "}
+        <span style={{ color: "var(--lime-600)", fontWeight: 600 }}>Privacy Policy</span>
+      </span>
+    </div>
+  );
+
   const features = [
     { icon: Activity, t: "Advanced Tracking", s: "Monitor your calories, macros, and activity in real-time." },
     { icon: Utensils, t: "AI Nutrition Analysis", s: "Snap a photo and get instant nutritional breakdown." },
@@ -77,21 +281,14 @@ export default function SignupPage() {
   ];
 
   return (
-    <div
-      className="cl-auth"
-      style={{
-        display: "grid",
-        gridTemplateColumns: "1.04fr 1fr",
-        minHeight: "100vh",
-        background: "var(--bg-app)",
-      }}
-    >
+    <div className="cl-auth" style={{ background: "var(--bg-app)" }}>
       {/* ── Brand panel ── */}
       <div
         className="cl-brand"
         style={{
           position: "relative",
           overflow: "hidden",
+          minWidth: 0,
           background: "#0A0C0F",
           display: "flex",
           flexDirection: "column",
@@ -211,6 +408,7 @@ export default function SignupPage() {
         className="cl-authpad"
         style={{
           position: "relative",
+          minWidth: 0,
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
@@ -256,208 +454,421 @@ export default function SignupPage() {
           >
             Create account
           </h2>
-          <p style={{ margin: "0 0 28px", color: "var(--text-secondary)", fontSize: 15 }}>
+          <p style={{ margin: "0 0 24px", color: "var(--text-secondary)", fontSize: 15 }}>
             Start your transformation today.
           </p>
 
-          <form onSubmit={handleSignup}>
-            {error && (
-              <div
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 12,
-                  background: "rgba(255, 77, 77, 0.1)",
-                  border: "1px solid rgba(255, 77, 77, 0.3)",
-                  color: "var(--error)",
-                  fontSize: 13,
-                  textAlign: "center",
-                  marginBottom: 16,
-                }}
-              >
-                {error}
-              </div>
-            )}
-
-            {/* Full Name */}
-            <label
-              style={{
-                display: "block",
-                fontSize: 13,
-                fontWeight: 500,
-                color: "var(--text-secondary)",
-                marginBottom: 7,
-              }}
-            >
-              Full name
-            </label>
-            <input
-              type="text"
-              placeholder="Jane Doe"
-              className="cl-input"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              required
-              style={{ marginBottom: 16 }}
-            />
-
-            {/* Email */}
-            <label
-              style={{
-                display: "block",
-                fontSize: 13,
-                fontWeight: 500,
-                color: "var(--text-secondary)",
-                marginBottom: 7,
-              }}
-            >
-              Email address
-            </label>
-            <input
-              type="email"
-              placeholder="jane@example.com"
-              className="cl-input"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              style={{ marginBottom: 16 }}
-            />
-
-            {/* Password */}
-            <label
-              style={{
-                display: "block",
-                fontSize: 13,
-                fontWeight: 500,
-                color: "var(--text-secondary)",
-                marginBottom: 7,
-              }}
-            >
-              Password
-            </label>
-            <div style={{ position: "relative", marginBottom: 16 }}>
-              <input
-                type={showPassword ? "text" : "password"}
-                placeholder="Min. 8 characters"
-                className="cl-input"
-                style={{ paddingRight: 46 }}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+          {/* Method toggle: Email | Phone */}
+          <div
+            role="tablist"
+            aria-label="Sign-up method"
+            style={{
+              display: "flex",
+              gap: 6,
+              padding: 4,
+              background: "var(--surface-card)",
+              border: "1px solid var(--border-color)",
+              borderRadius: 12,
+              marginBottom: 22,
+            }}
+          >
+            {(["email", "phone"] as const).map((m) => (
               <button
+                key={m}
                 type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                style={{
-                  position: "absolute",
-                  right: 12,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  background: "none",
-                  border: "none",
-                  color: "var(--text-tertiary)",
-                  cursor: "pointer",
-                  padding: 4,
-                  display: "flex",
+                role="tab"
+                aria-selected={method === m}
+                onClick={() => {
+                  setMethod(m);
+                  setError("");
                 }}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-
-            {/* Confirm Password */}
-            <label
-              style={{
-                display: "block",
-                fontSize: 13,
-                fontWeight: 500,
-                color: "var(--text-secondary)",
-                marginBottom: 7,
-              }}
-            >
-              Confirm password
-            </label>
-            <div style={{ position: "relative", marginBottom: 22 }}>
-              <input
-                type={showConfirmPassword ? "text" : "password"}
-                placeholder="Re-enter password"
-                className="cl-input"
-                style={{ paddingRight: 46 }}
-                value={confirmPass}
-                onChange={(e) => setConfirmPass(e.target.value)}
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                aria-label={showConfirmPassword ? "Hide password" : "Show password"}
                 style={{
-                  position: "absolute",
-                  right: 12,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  background: "none",
+                  flex: 1,
+                  minWidth: 0,
+                  padding: "9px 0",
+                  borderRadius: 9,
                   border: "none",
-                  color: "var(--text-tertiary)",
                   cursor: "pointer",
-                  padding: 4,
-                  display: "flex",
-                }}
-              >
-                {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-
-            {/* Terms Checkbox */}
-            <div
-              onClick={() => setAgreed(!agreed)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 11,
-                marginBottom: 22,
-                cursor: "pointer",
-              }}
-            >
-              <span
-                style={{
-                  flex: "none",
-                  width: 20,
-                  height: 20,
-                  borderRadius: 6,
-                  border: `1.5px solid ${agreed ? "var(--lime-400)" : "var(--border-color)"}`,
-                  background: agreed ? "var(--lime-400)" : "var(--input-bg)",
+                  fontWeight: 600,
+                  fontSize: 14,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  color: "#0A0C0F",
+                  gap: 7,
+                  background: method === m ? "var(--lime-400)" : "transparent",
+                  color: method === m ? "#0A0C0F" : "var(--text-secondary)",
+                  transition: "background .15s, color .15s",
                 }}
               >
-                {agreed && <Check size={14} strokeWidth={3} />}
-              </span>
-              {/* hidden input preserves required validation + checked state wiring */}
-              <input
-                id="terms"
-                type="checkbox"
-                checked={agreed}
-                onChange={(e) => setAgreed(e.target.checked)}
-                required
-                style={{ position: "absolute", opacity: 0, width: 0, height: 0, pointerEvents: "none" }}
-                tabIndex={-1}
-                aria-hidden="true"
-              />
-              <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                I agree to the{" "}
-                <span style={{ color: "var(--lime-600)", fontWeight: 600 }}>Terms of Service</span> and{" "}
-                <span style={{ color: "var(--lime-600)", fontWeight: 600 }}>Privacy Policy</span>
-              </span>
-            </div>
+                {m === "email" ? <Mail size={15} /> : <Smartphone size={15} />}
+                {m === "email" ? "Email" : "Phone"}
+              </button>
+            ))}
+          </div>
 
-            {/* Submit */}
-            <button type="submit" className="btn-primary" style={{ width: "100%" }}>
-              Create account
-            </button>
-          </form>
+          {error && (
+            <div
+              style={{
+                padding: "10px 14px",
+                borderRadius: 12,
+                background: "rgba(255, 77, 77, 0.1)",
+                border: "1px solid rgba(255, 77, 77, 0.3)",
+                color: "var(--error)",
+                fontSize: 13,
+                textAlign: "center",
+                marginBottom: 16,
+              }}
+            >
+              {error}
+            </div>
+          )}
+
+          {method === "email" && linkSent && (
+            /* Email link sent — check inbox state */
+            <div className="cl-card" style={{ textAlign: "center", padding: "30px 24px", marginBottom: 4 }}>
+              <span
+                style={{
+                  display: "inline-flex",
+                  width: 52,
+                  height: 52,
+                  borderRadius: 16,
+                  background: "rgba(170,255,0,.12)",
+                  border: "1px solid rgba(170,255,0,.3)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "var(--lime-600)",
+                  marginBottom: 14,
+                }}
+              >
+                <MailCheck size={24} />
+              </span>
+              <h3
+                style={{
+                  fontFamily: "var(--font-display)",
+                  fontSize: 20,
+                  fontWeight: 700,
+                  margin: "0 0 6px",
+                  color: "var(--text-primary)",
+                }}
+              >
+                Check your inbox
+              </h3>
+              <p style={{ margin: "0 0 18px", fontSize: 14, lineHeight: 1.55, color: "var(--text-secondary)" }}>
+                We sent a sign-in link to <strong style={{ color: "var(--text-primary)" }}>{email}</strong>. Open it on
+                this device to create your account instantly — no password needed.
+              </p>
+              <button
+                type="button"
+                onClick={handleSendLink}
+                disabled={linkLoading}
+                className="btn-secondary"
+                style={{ width: "100%", opacity: linkLoading ? 0.6 : 1 }}
+              >
+                {linkLoading ? "Resending…" : "Resend link"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setLinkSent(false)}
+                style={{
+                  marginTop: 12,
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "var(--text-secondary)",
+                }}
+              >
+                Use a password instead
+              </button>
+            </div>
+          )}
+
+          {method === "email" && !linkSent && (
+            <form onSubmit={handleSignup}>
+              {/* Full Name */}
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: "var(--text-secondary)",
+                  marginBottom: 7,
+                }}
+              >
+                Full name
+              </label>
+              <input
+                type="text"
+                placeholder="Jane Doe"
+                className="cl-input"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                required
+                style={{ marginBottom: 16 }}
+              />
+
+              {/* Email */}
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: "var(--text-secondary)",
+                  marginBottom: 7,
+                }}
+              >
+                Email address
+              </label>
+              <input
+                type="email"
+                placeholder="jane@example.com"
+                className="cl-input"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                style={{ marginBottom: 16 }}
+              />
+
+              {/* Password */}
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: "var(--text-secondary)",
+                  marginBottom: 7,
+                }}
+              >
+                Password
+              </label>
+              <div style={{ position: "relative", marginBottom: 16 }}>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Min. 8 characters"
+                  className="cl-input"
+                  style={{ paddingRight: 46 }}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  style={{
+                    position: "absolute",
+                    right: 12,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-tertiary)",
+                    cursor: "pointer",
+                    padding: 4,
+                    display: "flex",
+                  }}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+
+              {/* Confirm Password */}
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: "var(--text-secondary)",
+                  marginBottom: 7,
+                }}
+              >
+                Confirm password
+              </label>
+              <div style={{ position: "relative", marginBottom: 22 }}>
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  placeholder="Re-enter password"
+                  className="cl-input"
+                  style={{ paddingRight: 46 }}
+                  value={confirmPass}
+                  onChange={(e) => setConfirmPass(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                  style={{
+                    position: "absolute",
+                    right: 12,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-tertiary)",
+                    cursor: "pointer",
+                    padding: 4,
+                    display: "flex",
+                  }}
+                >
+                  {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+
+              {/* Terms Checkbox */}
+              {termsRow(true)}
+
+              {/* Submit */}
+              <button type="submit" className="btn-primary" style={{ width: "100%" }}>
+                Create account
+              </button>
+
+              {/* Passwordless email link */}
+              <button
+                type="button"
+                onClick={handleSendLink}
+                disabled={linkLoading}
+                style={{
+                  width: "100%",
+                  marginTop: 12,
+                  padding: "10px 0",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  color: "var(--lime-600)",
+                  opacity: linkLoading ? 0.6 : 1,
+                }}
+              >
+                {linkLoading ? "Sending link…" : "Email me a sign-in link instead"}
+              </button>
+            </form>
+          )}
+
+          {method === "phone" && !otpSent && (
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: "var(--text-secondary)",
+                  marginBottom: 7,
+                }}
+              >
+                Phone number
+              </label>
+              <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+                <input
+                  type="tel"
+                  aria-label="Country code"
+                  value={phoneCode}
+                  onChange={(e) => setPhoneCode(e.target.value.replace(/[^\d+]/g, "").slice(0, 5))}
+                  className="cl-input"
+                  style={{ width: 84, flex: "none", textAlign: "center" }}
+                />
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  autoComplete="tel-national"
+                  placeholder="98765 43210"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value.replace(/[^\d\s-]/g, ""))}
+                  className="cl-input"
+                  style={{ flex: 1, minWidth: 0 }}
+                />
+              </div>
+
+              {/* Terms Checkbox (shared state with the email form) */}
+              {termsRow(false)}
+
+              <button
+                type="button"
+                onClick={handleSendOtp}
+                disabled={phoneLoading}
+                className="btn-primary"
+                style={{ width: "100%", opacity: phoneLoading ? 0.7 : 1 }}
+              >
+                {phoneLoading ? "Sending OTP…" : "Send OTP"}
+              </button>
+              <p style={{ margin: "14px 0 0", fontSize: 12.5, lineHeight: 1.5, color: "var(--text-tertiary)", textAlign: "center" }}>
+                We&apos;ll text you a 6-digit code. Standard SMS rates may apply.
+              </p>
+            </div>
+          )}
+
+          {method === "phone" && otpSent && (
+            <div>
+              <p style={{ margin: "0 0 14px", fontSize: 14, color: "var(--text-secondary)" }}>
+                Enter the 6-digit code sent to{" "}
+                <strong style={{ color: "var(--text-primary)", fontFamily: "var(--font-mono)" }}>{sentTo}</strong>
+              </p>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                placeholder="••••••"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                className="cl-input"
+                style={{
+                  textAlign: "center",
+                  letterSpacing: "0.45em",
+                  fontSize: 20,
+                  fontFamily: "var(--font-mono)",
+                  marginBottom: 20,
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleVerifyOtp}
+                disabled={phoneLoading}
+                className="btn-primary"
+                style={{ width: "100%", opacity: phoneLoading ? 0.7 : 1 }}
+              >
+                {phoneLoading ? "Verifying…" : "Verify & Create account"}
+              </button>
+              <div style={{ display: "flex", justifyContent: "center", gap: 22, marginTop: 14 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOtpSent(false);
+                    setOtp("");
+                    setError("");
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "var(--text-secondary)",
+                  }}
+                >
+                  Change number
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSendOtp}
+                  disabled={phoneLoading}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "var(--lime-600)",
+                    opacity: phoneLoading ? 0.6 : 1,
+                  }}
+                >
+                  Resend code
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Divider */}
           <div style={{ display: "flex", alignItems: "center", gap: 14, margin: "22px 0" }}>
@@ -512,6 +923,10 @@ export default function SignupPage() {
             </Link>
           </p>
         </div>
+
+        {/* Invisible reCAPTCHA mount point (always in the DOM so the verifier
+            survives method toggling and re-renders) */}
+        <div ref={recaptchaRef} />
       </div>
     </div>
   );

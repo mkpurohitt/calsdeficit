@@ -50,6 +50,11 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const telemetry = telemetrySchema.parse(body.telemetry);
+    // Optional tiny video-frame data-URL (client-generated, ~96px). Size-capped.
+    const thumb =
+      typeof body.thumb === "string" && body.thumb.startsWith("data:image/") && body.thumb.length < 60_000
+        ? (body.thumb as string)
+        : null;
 
     // Form checks analyse a video on-device; charge the video rate.
     const usage = await consumeUsage(user.uid, "video");
@@ -102,6 +107,7 @@ Identify the exercise, score the form 0-100 against ideal biomechanics (depth, r
           score,
           corrections: parsed.corrections,
           telemetry_summary: jointLines,
+          ...(thumb ? { thumb } : {}),
           created_at: new Date().toISOString(),
         });
       }

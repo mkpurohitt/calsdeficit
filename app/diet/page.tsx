@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../../lib/AuthContext";
 import { addFoodLog, deleteFoodLog, getDateKey, getDateKeyDaysAgo, getDay, getFoodLogs, getUserGoal, saveDay } from "../../lib/user-data";
 import { apiFetch } from "../../lib/api-client";
-import { compressImage } from "../../lib/image-compress";
+import { compressImage, makeImageThumb } from "../../lib/image-compress";
 import FoodScanCard from "../../components/FoodScanCard";
 import type { FoodScanResult } from "../../lib/schemas/food-scan";
 import { WATER_GLASS_ML, WATER_GOAL_ML } from "../../lib/config/app";
@@ -27,6 +27,7 @@ interface FoodLogEntry {
   source?: string;
   verified?: boolean;
   confidence?: number;
+  photo_thumb?: string;
   created_at?: string;
   date_key?: string;
 }
@@ -58,6 +59,7 @@ export default function DietPage() {
   // Scanner modal state
   const [showScanner, setScannerOpen] = useState(false);
   const [scanImage, setScanImage] = useState<File | null>(null);
+  const [scanContext, setScanContext] = useState("");
   const [scanPreview, setScanPreview] = useState<string | null>(null);
   const [scanMealType, setScanMealType] = useState("Breakfast");
   const [scanning, setScanning] = useState(false);
@@ -173,6 +175,7 @@ export default function DietPage() {
   const openScanner = (mealType?: string) => {
     setScannerOpen(true);
     setScanImage(null);
+    setScanContext("");
     setScanPreview(null);
     setScanResult(null);
     setScanError(null);
@@ -184,6 +187,7 @@ export default function DietPage() {
   const closeScanner = () => {
     setScannerOpen(false);
     setScanImage(null);
+    setScanContext("");
     setScanPreview(null);
     setScanResult(null);
     setScanError(null);
@@ -210,16 +214,20 @@ export default function DietPage() {
   };
 
   const handleAnalyze = async () => {
-    if (!scanImage) return;
+    // Photo, text description, or both — the API supports all three.
+    if (!scanImage && !scanContext.trim()) return;
     setScanning(true);
     setScanError(null);
     setScanResult(null);
 
     try {
-      // Standardize on-device (≤768px / 75% JPEG → flat 258 Gemini tokens)
-      const compressed = await compressImage(scanImage);
       const formData = new FormData();
-      formData.append('image', compressed);
+      if (scanImage) {
+        // Standardize on-device (≤768px / 75% JPEG → flat 258 Gemini tokens)
+        const compressed = await compressImage(scanImage);
+        formData.append('image', compressed);
+      }
+      if (scanContext.trim()) formData.append('context', scanContext.trim());
       formData.append('meal_type', scanMealType);
 
       const res = await apiFetch('/api/food-scan', { method: 'POST', body: formData });
@@ -246,6 +254,8 @@ export default function DietPage() {
     setScanError(null);
 
     try {
+      // Tiny thumb of the scanned photo so the journal row can show it.
+      const photoThumb = scanImage ? await makeImageThumb(scanImage) : null;
       await addFoodLog({
         user_id: user.uid,
         food_name: scanResult.food_name,
@@ -260,6 +270,7 @@ export default function DietPage() {
         source: scanResult.source,
         verified: scanResult.verified,
         confidence: scanResult.confidence,
+        ...(photoThumb ? { photo_thumb: photoThumb } : {}),
         date_key: getDateKey(),
         date: getDateKey(),
       });
@@ -618,6 +629,14 @@ export default function DietPage() {
                               borderRadius: 11,
                             }}
                           >
+                            {item.photo_thumb && (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={item.photo_thumb}
+                                alt=""
+                                style={{ flex: "none", width: 36, height: 36, borderRadius: 9, objectFit: "cover" }}
+                              />
+                            )}
                             <div style={{ flex: 1 }}>
                               <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>{item.food_name}</div>
                               <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 1 }}>
@@ -1012,34 +1031,51 @@ export default function DietPage() {
                   </button>
                 </div>
 
-                {/* Analyze Button */}
-                {!scanResult && (
-                  <button
-                    onClick={handleAnalyze}
-                    disabled={scanning}
-                    className="btn-primary w-full flex items-center justify-center gap-2"
-                    style={{
-                      height: 48,
-                      borderRadius: "var(--radius-md)",
-                      fontSize: 14,
-                      fontWeight: 600,
-                      opacity: scanning ? 0.7 : 1,
-                    }}
-                  >
-                    {scanning ? (
-                      <>
-                        <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} />
-                        Analyzing with AI...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles size={16} />
-                        Analyze Food
-                      </>
-                    )}
-                  </button>
-                )}
               </div>
+            )}
+
+            {/* Describe the food — works alone or together with a photo */}
+            {!scanResult && (
+              <div style={{ marginBottom: 16 }}>
+                <textarea
+                  value={scanContext}
+                  onChange={(e) => setScanContext(e.target.value)}
+                  rows={2}
+                  placeholder={scanImage ? "Add details (optional) — e.g. cooked in ghee, large portion…" : "No photo? Just type it — e.g. 2 rotis with dal and a bowl of rice"}
+                  className="cl-input"
+                  style={{ resize: "vertical", fontSize: 14, lineHeight: 1.55 }}
+                />
+              </div>
+            )}
+
+            {/* Analyze Button — enabled with a photo, a description, or both */}
+            {!scanResult && (
+              <button
+                onClick={handleAnalyze}
+                disabled={scanning || (!scanImage && !scanContext.trim())}
+                className="btn-primary w-full flex items-center justify-center gap-2"
+                style={{
+                  height: 48,
+                  borderRadius: "var(--radius-md)",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  marginBottom: 16,
+                  opacity: scanning || (!scanImage && !scanContext.trim()) ? 0.6 : 1,
+                  cursor: scanning || (!scanImage && !scanContext.trim()) ? "not-allowed" : "pointer",
+                }}
+              >
+                {scanning ? (
+                  <>
+                    <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} />
+                    Analyzing with AI...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={16} />
+                    Analyze Food
+                  </>
+                )}
+              </button>
             )}
 
             {/* Error */}

@@ -2,7 +2,8 @@
 // Blueprint result card (v2 design): verified badge → food name/kcal →
 // macro tiles → health score bar → expert review → improvement tips with
 // affiliate product card → ad LAST (commercial content never interrupts value).
-import { BadgeCheck, ExternalLink, TriangleAlert, UtensilsCrossed } from "lucide-react";
+import { useState } from "react";
+import { BadgeCheck, Check, ExternalLink, Loader2, TriangleAlert, UtensilsCrossed } from "lucide-react";
 import { affiliateLinkFor } from "../lib/config/affiliate-links";
 import type { FoodScanResult } from "../lib/schemas/food-scan";
 import AdCard from "./ads/AdCard";
@@ -13,6 +14,8 @@ interface FoodScanCardProps {
   adsEnabled?: boolean;
   /** Hide the ad slot (e.g. inside the diet scanner modal before saving). */
   showAd?: boolean;
+  /** Optional "Add to diary" action. When absent the card renders exactly as before. */
+  onAdd?: () => Promise<void>;
 }
 
 function healthLabel(rating: number): { text: string; color: string } {
@@ -22,7 +25,21 @@ function healthLabel(rating: number): { text: string; color: string } {
   return { text: "TREAT — ENJOY SPARINGLY", color: "var(--error)" };
 }
 
-export default function FoodScanCard({ scan, adKeywords = [], adsEnabled = true, showAd = true }: FoodScanCardProps) {
+export default function FoodScanCard({ scan, adKeywords = [], adsEnabled = true, showAd = true, onAdd }: FoodScanCardProps) {
+  const [addState, setAddState] = useState<"idle" | "saving" | "saved">("idle");
+
+  const handleAdd = async () => {
+    if (!onAdd || addState !== "idle") return;
+    setAddState("saving");
+    try {
+      await onAdd();
+      setAddState("saved");
+    } catch (error) {
+      console.error("[food-scan-card] add to diary failed", error);
+      setAddState("idle");
+    }
+  };
+
   const rating = Math.round(scan.rating_out_of_10 * 10) / 10;
   const label = healthLabel(rating);
   const barColor =
@@ -222,6 +239,38 @@ export default function FoodScanCard({ scan, adKeywords = [], adsEnabled = true,
             View →
           </a>
         </div>
+      )}
+
+      {/* Add to diary — always above the ad slot */}
+      {onAdd && (
+        <button
+          onClick={handleAdd}
+          disabled={addState !== "idle"}
+          className="flex items-center justify-center gap-2 w-full"
+          style={{
+            padding: "11px 14px",
+            borderRadius: 10,
+            border: "none",
+            background: addState === "saved" ? "rgba(170, 255, 0, 0.12)" : "var(--lime-400)",
+            color: addState === "saved" ? "var(--lime-400)" : "#0A0C0F",
+            fontSize: 14,
+            fontWeight: 700,
+            cursor: addState === "idle" ? "pointer" : "default",
+            transition: "background 0.15s ease, color 0.15s ease",
+          }}
+        >
+          {addState === "saved" ? (
+            <>
+              <Check size={15} /> Added to diary
+            </>
+          ) : addState === "saving" ? (
+            <>
+              <Loader2 size={15} className="animate-spin" /> Adding…
+            </>
+          ) : (
+            "Add to diary"
+          )}
+        </button>
       )}
 
       {/* Contextual native ad — always last */}
