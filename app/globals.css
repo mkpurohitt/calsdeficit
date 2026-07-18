@@ -448,6 +448,19 @@ body {
 .cl-disp { font-family: var(--font-display); }
 .cl-mono { font-family: var(--font-mono); }
 
+/* Auth split layout (login/signup): brand panel + form, collapsing to a
+   single full-width form on small screens. */
+.cl-auth {
+  display: grid;
+  grid-template-columns: 1.04fr 1fr;
+  min-height: 100vh;
+}
+@media (max-width: 860px) {
+  .cl-auth { grid-template-columns: 1fr !important; }
+  .cl-brand { display: none !important; }
+  .cl-authpad { padding: 40px 22px !important; }
+}
+
 /* Toggle switch (profile notifications) */
 .cl-switch {
   width: 42px; height: 24px;

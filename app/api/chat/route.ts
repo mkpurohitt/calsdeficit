@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { genai, chatModelId } from '../../../lib/server/genai';
 import { findExercises } from '../../../lib/server/exercise-db';
-import { analyzeFoodImage } from '../../../lib/food-analysis';
+import { analyzeFoodImage, analyzeFoodText } from '../../../lib/food-analysis';
+import { parseWorkout } from '../../../lib/server/workout-parse';
 import { requireUser } from '../../../lib/server/auth';
-import { consumeUsage } from '../../../lib/server/usage';
+import { consumeUsage, usageLimitMessage, type UsageKind } from '../../../lib/server/usage';
 import { tierConfig } from '../../../lib/entitlements';
 
 export const runtime = 'nodejs';
@@ -43,6 +44,18 @@ function isExerciseRequest(message: string) {
   return exerciseIntentWords.some((word) => msgLower.includes(word)) || detectMuscles(message).length > 0;
 }
 
+/** "I ate…", "calories in…", "I had X for lunch" → structured food card. */
+function isFoodLogIntent(message: string) {
+  return /(\bi (just )?(ate|had|drank)\b|\bfor (breakfast|lunch|dinner|snacks?)\b|\bcalories? in\b|\bhow (many|much) calories\b|\bkcal in\b|\bnutrition (of|in)\b|\bmacros (of|in|for)\b|\blog (my )?(food|meal)\b)/i.test(message);
+}
+
+/** "I did bench 4x8", "log squats 3 sets of 10" → structured workout log. */
+function isWorkoutLogIntent(message: string) {
+  const didSomething = /\b(i (just )?(did|done|completed|finished|trained|performed)|log (my )?(workout|exercise|set|lift))\b/i.test(message);
+  const setsReps = /(\d+\s*[x×]\s*\d+|\b\d+\s*sets?\b|\b\d+\s*reps?\b)/i.test(message);
+  return (didSomething && !/\?\s*$/.test(message)) || (setsReps && didSomething) || (setsReps && /\b(bench|squat|deadlift|press|curl|row|pull[- ]?up|push[- ]?up|lunge|raise|extension|pushdown|fly|dip|crunch|plank)\b/i.test(message));
+}
+
 async function fetchExerciseMatches(message: string) {
   if (!message || !isExerciseRequest(message)) return [];
   const muscles = detectMuscles(message);
@@ -69,21 +82,23 @@ export async function POST(req: Request) {
     const user = await requireUser(req);
     if (user instanceof NextResponse) return user;
 
-    const { message, fileData, mimeType, mode } = await req.json();
+    const { message, fileData, mimeType } = await req.json();
 
-    const usage = await consumeUsage(user.uid);
+    const isImage = Boolean(fileData && typeof mimeType === 'string' && mimeType.startsWith('image/'));
+    const isVideo = Boolean(fileData && typeof mimeType === 'string' && mimeType.startsWith('video/'));
+    const usageKind: UsageKind = isVideo ? 'video' : isImage ? 'image' : 'text';
+
+    const usage = await consumeUsage(user.uid, usageKind);
     if (!usage.allowed) {
-      return NextResponse.json(
-        { success: false, error: `Daily limit reached (${usage.used}/${usage.limit}). Upgrade or try again tomorrow.` },
-        { status: 429 }
-      );
+      return NextResponse.json({ success: false, error: usageLimitMessage(usage) }, { status: 429 });
     }
     const adsEnabled = tierConfig(usage.tier).ads;
+    const usagePayload = { used_pct: usage.used_pct, resets_at: usage.resets_at, tier: usage.tier };
 
-    // Food photo → structured scan pipeline (verified card + ad keywords)
-    if (mode === 'food' && fileData && mimeType) {
+    // ── Food photo → structured scan card (verified against our database) ──
+    if (isImage) {
       const data = await analyzeFoodImage({
-        base64Data: fileData.split(',')[1],
+        base64Data: String(fileData).split(',').pop() as string,
         mimeType,
         mealType: 'Snacks',
         userContext: message || undefined,
@@ -95,18 +110,51 @@ export async function POST(req: Request) {
         adKeywords: adsEnabled ? data.suggested_ad_keywords : [],
         adsEnabled,
         exercises: [],
-        usage: { used: usage.used, limit: usage.limit, tier: usage.tier },
+        usage: usagePayload,
       });
     }
 
-    const exerciseMatches = mode === 'chat' ? await fetchExerciseMatches(message || '') : [];
+    // ── Text-only intents: structured food card / structured workout log ──
+    if (!fileData && message) {
+      if (isWorkoutLogIntent(message)) {
+        try {
+          const workout = await parseWorkout({ message });
+          return NextResponse.json({
+            success: true,
+            kind: 'workout-log',
+            workout,
+            data: `Nice work — **${workout.exercise_name}**, ${workout.sets}×${workout.reps}${workout.weight_kg ? ` at ${workout.weight_kg} kg` : ''}. Log it to your Exercise diary below.`,
+            adKeywords: adsEnabled ? ['gym gear', 'fitness equipment', 'sports nutrition'] : [],
+            adsEnabled,
+            exercises: [],
+            usage: usagePayload,
+          });
+        } catch (error) {
+          console.error('[Chat API] workout parse failed, falling through to chat:', error);
+        }
+      }
+      if (isFoodLogIntent(message)) {
+        try {
+          const data = await analyzeFoodText({ description: message, mealType: 'Snacks' });
+          return NextResponse.json({
+            success: true,
+            kind: 'food-scan',
+            scan: data,
+            adKeywords: adsEnabled ? data.suggested_ad_keywords : [],
+            adsEnabled,
+            exercises: [],
+            usage: usagePayload,
+          });
+        } catch (error) {
+          console.error('[Chat API] text food scan failed, falling through to chat:', error);
+        }
+      }
+    }
+
+    const exerciseMatches = !fileData ? await fetchExerciseMatches(message || '') : [];
 
     let systemInstruction = '';
-    if (mode === 'food') {
-      systemInstruction = `You are Calolean's Nutritionist AI. Answer the user's food question directly and decisively in Markdown — never reply with vague non-answers like "it varies" or "it depends".
-
-If they ask how many calories or macros a food/drink has, LEAD with a single concrete number for one standard serving, then the macro split. Example: "**Masala chai (1 cup, 240 ml, with milk + sugar) ≈ 120 kcal** — 3g protein, 16g carbs, 4g fat." Always state the serving size you assumed. Give your best specific estimate rather than a wide range; you may add at most ONE short line about a common variant. Be concise — no filler.`;
-    } else if (mode === 'gym') {
+    if (isVideo) {
       systemInstruction = `You are Calolean's Gym Coach AI. The user has uploaded a workout/exercise video and may provide additional details. Identify the exercise, rate their form (1-10), and give specific corrections. Output Markdown. End with: SEARCH_QUERY: [Exercise Name] correct form.`;
     } else {
       systemInstruction = `You are Calolean, an expert fitness and nutrition coach. Answer directly and decisively — never give vague non-answers like "it varies widely" or "it depends".
@@ -127,7 +175,7 @@ When asked how many calories or macros a food/drink has, ALWAYS lead with a sing
     ];
     if (message) parts.push({ text: `User: ${message}` });
     if (fileData) {
-      parts.push({ inlineData: { mimeType, data: fileData.split(',')[1] } });
+      parts.push({ inlineData: { mimeType, data: String(fileData).split(',').pop() as string } });
     }
 
     const result = await genai().models.generateContent({
@@ -146,9 +194,9 @@ When asked how many calories or macros a food/drink has, ALWAYS lead with a sing
         equipment: ex.equipment,
         gif_url: ex.gif_url,
       })),
-      adKeywords: adsEnabled ? deriveChatAdKeywords(mode, exerciseMatches.map((e) => e.muscle_group)) : [],
+      adKeywords: adsEnabled ? deriveChatAdKeywords(isVideo, exerciseMatches.map((e) => e.muscle_group)) : [],
       adsEnabled,
-      usage: { used: usage.used, limit: usage.limit, tier: usage.tier },
+      usage: usagePayload,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Chat failed.';
@@ -159,8 +207,8 @@ When asked how many calories or macros a food/drink has, ALWAYS lead with a sing
 
 // Context isolation (blueprint §B): only database-derived category keywords go
 // to the ad layer — never the user's raw chat text.
-function deriveChatAdKeywords(mode: string, muscleGroups: string[]): string[] {
-  if (mode === 'gym') return ['gym gear', 'fitness equipment', 'sports nutrition'];
+function deriveChatAdKeywords(isVideo: boolean, muscleGroups: string[]): string[] {
+  if (isVideo) return ['gym gear', 'fitness equipment', 'sports nutrition'];
   if (muscleGroups.length > 0) {
     return [...new Set(['home workout', 'gym gear', ...muscleGroups.slice(0, 2).map((m) => `${m} training`)])];
   }

@@ -4,7 +4,7 @@ import { Type, type Schema } from "@google/genai";
 import { genai, visionModelId } from "../../../lib/server/genai";
 import { getFormReference } from "../../../lib/server/exercise-db";
 import { requireUser } from "../../../lib/server/auth";
-import { consumeUsage } from "../../../lib/server/usage";
+import { consumeUsage, usageLimitMessage } from "../../../lib/server/usage";
 import { tierConfig } from "../../../lib/entitlements";
 import { adminDb } from "../../../lib/server/firebase-admin";
 
@@ -51,12 +51,10 @@ export async function POST(req: Request) {
     const body = await req.json();
     const telemetry = telemetrySchema.parse(body.telemetry);
 
-    const usage = await consumeUsage(user.uid);
+    // Form checks analyse a video on-device; charge the video rate.
+    const usage = await consumeUsage(user.uid, "video");
     if (!usage.allowed) {
-      return NextResponse.json(
-        { success: false, error: `Daily limit reached (${usage.used}/${usage.limit}). Upgrade or try again tomorrow.` },
-        { status: 429 }
-      );
+      return NextResponse.json({ success: false, error: usageLimitMessage(usage) }, { status: 429 });
     }
 
     const reference = telemetry.exercise_hint ? await getFormReference(telemetry.exercise_hint) : null;
@@ -127,7 +125,7 @@ Identify the exercise, score the form 0-100 against ideal biomechanics (depth, r
       },
       adKeywords: adsEnabled ? parsed.suggested_ad_keywords : [],
       adsEnabled,
-      usage: { used: usage.used, limit: usage.limit, tier: usage.tier },
+      usage: { used_pct: usage.used_pct, resets_at: usage.resets_at, tier: usage.tier },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Form analysis failed.";

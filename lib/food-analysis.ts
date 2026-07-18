@@ -20,6 +20,12 @@ function toDisplayName(name: string) {
     .join(" ");
 }
 
+const TEXT_SCAN_PROMPT = `You are Calolean's expert nutritionist AI. The user DESCRIBES a food in text (no photo). Analyze the described food:
+- Identify the food and estimate nutrition for one standard serving (or the portion the user states).
+- Rate its healthiness out of 10 for a fitness-focused person.
+- Give practical improvement suggestions; when a generic grocery product would implement a tip (e.g. paneer, olive oil, whey protein), set product_keyword.
+- suggested_ad_keywords must be 3-6 GENERIC health/fitness shopping phrases about the food category only (e.g. "high protein", "meal prep", "clean eating"). Never include personal or sensitive information.`;
+
 export async function analyzeFoodImage({
   base64Data,
   mimeType,
@@ -49,7 +55,40 @@ export async function analyzeFoodImage({
     },
   });
 
-  const text = response.text;
+  return finishScan(response.text, mealType);
+}
+
+/**
+ * Text-only variant: same structured pipeline, no image. Powers "I ate ..."
+ * chat prompts and the diet scanner's type-it-in mode.
+ */
+export async function analyzeFoodText({
+  description,
+  mealType = "Snacks",
+}: {
+  description: string;
+  mealType?: string;
+}): Promise<FoodScanResult> {
+  const response = await genai().models.generateContent({
+    model: visionModelId(),
+    contents: [
+      {
+        role: "user",
+        parts: [{ text: `${TEXT_SCAN_PROMPT}\n\nUser's food description: ${description}` }],
+      },
+    ],
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: foodScanResponseSchema,
+      temperature: 0.2,
+    },
+  });
+
+  return finishScan(response.text, mealType);
+}
+
+/** Shared tail of both pipelines: parse → verify against the DB → result. */
+async function finishScan(text: string | undefined, mealType: string): Promise<FoodScanResult> {
   if (!text) throw new Error("AI returned an empty response. Please try again.");
 
   const parsed = foodScanAiSchema.parse(JSON.parse(text));

@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
-import { analyzeFoodImage } from "../../../lib/food-analysis";
+import { analyzeFoodImage, analyzeFoodText } from "../../../lib/food-analysis";
 import { requireUser } from "../../../lib/server/auth";
-import { consumeUsage } from "../../../lib/server/usage";
+import { consumeUsage, usageLimitMessage } from "../../../lib/server/usage";
 import { tierConfig } from "../../../lib/entitlements";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+/**
+ * Structured food scan for the diet scanner. Accepts an image, a text
+ * description, or both — text-only lets users log by typing what they ate.
+ */
 export async function POST(req: Request) {
   try {
     const user = await requireUser(req);
@@ -17,26 +21,31 @@ export async function POST(req: Request) {
     const mealType = (formData.get("meal_type") as string) || "Snacks";
     const userContext = (formData.get("context") as string) || undefined;
 
-    if (!image) {
-      return NextResponse.json({ success: false, error: "No image provided" }, { status: 400 });
-    }
-
-    const usage = await consumeUsage(user.uid);
-    if (!usage.allowed) {
+    if (!image && !userContext?.trim()) {
       return NextResponse.json(
-        { success: false, error: `Daily limit reached (${usage.used}/${usage.limit}). Upgrade or try again tomorrow.` },
-        { status: 429 }
+        { success: false, error: "Add a photo or describe the food." },
+        { status: 400 }
       );
     }
 
-    const arrayBuffer = await image.arrayBuffer();
-    const base64Data = Buffer.from(arrayBuffer).toString("base64");
-    const data = await analyzeFoodImage({
-      base64Data,
-      mimeType: image.type,
-      mealType,
-      userContext,
-    });
+    const usage = await consumeUsage(user.uid, image ? "image" : "text");
+    if (!usage.allowed) {
+      return NextResponse.json({ success: false, error: usageLimitMessage(usage) }, { status: 429 });
+    }
+
+    let data;
+    if (image) {
+      const arrayBuffer = await image.arrayBuffer();
+      const base64Data = Buffer.from(arrayBuffer).toString("base64");
+      data = await analyzeFoodImage({
+        base64Data,
+        mimeType: image.type,
+        mealType,
+        userContext,
+      });
+    } else {
+      data = await analyzeFoodText({ description: userContext as string, mealType });
+    }
 
     const adsEnabled = tierConfig(usage.tier).ads;
     return NextResponse.json({
@@ -44,7 +53,7 @@ export async function POST(req: Request) {
       data,
       adKeywords: adsEnabled ? data.suggested_ad_keywords : [],
       adsEnabled,
-      usage: { used: usage.used, limit: usage.limit, tier: usage.tier },
+      usage: { used_pct: usage.used_pct, resets_at: usage.resets_at, tier: usage.tier },
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Food scan failed.";

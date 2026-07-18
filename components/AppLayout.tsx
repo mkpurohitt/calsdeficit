@@ -25,8 +25,8 @@ export function BrandMark({ size = 28, id = "lg" }: { size?: number; id?: string
 const NAV_ITEMS = [
   { name: "Home", mobileName: "Home", href: "/", icon: MessageSquare },
   { name: "Diet", mobileName: "Diet", href: "/diet", icon: Utensils },
-  { name: "Exercise", mobileName: "Train", href: "/exercise", icon: Dumbbell },
   { name: "Shop", mobileName: "Shop", href: "/shop", icon: ShoppingBag },
+  { name: "Exercise", mobileName: "Exercise", href: "/exercise", icon: Dumbbell },
   { name: "Profile", mobileName: "You", href: "/profile", icon: User },
 ];
 

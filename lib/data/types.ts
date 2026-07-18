@@ -43,6 +43,8 @@ export interface FoodLogRecord {
   source?: string;
   verified?: boolean;
   confidence?: number;
+  /** Tiny compressed JPEG data-URL of the logged food photo (~96px) for the journal row. */
+  photo_thumb?: string;
   date_key: string;
   date: string;
   created_at?: string;
@@ -57,6 +59,8 @@ export interface WorkoutLogRecord {
   sets: number;
   reps: number;
   weight_lbs: number;
+  /** Tiny compressed JPEG data-URL frame from an uploaded workout video (~96px). */
+  thumb?: string;
   date_key: string;
   logged_at: string;
 }
@@ -67,6 +71,8 @@ export interface FormAnalysisRecord {
   exercise_name: string;
   score: number;
   corrections?: string[];
+  /** Tiny compressed JPEG data-URL frame captured from the analysed video (~96px). */
+  thumb?: string;
   created_at: string;
 }
 

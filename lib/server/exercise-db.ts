@@ -62,6 +62,76 @@ async function loadDataset(): Promise<ExerciseRecord[]> {
   return datasetPromise;
 }
 
+// Supplement source: the same free-exercise-db dataset the Cloud SQL catalog
+// was built from (identical ids). Used to fill in gif_url/instructions when a
+// DB row is missing them (e.g. an incomplete bulk load) so the library always
+// shows real images + steps without needing a database reload.
+const SUPPLEMENT_URL = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/dist/exercises.json";
+const SUPPLEMENT_IMG_BASE = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/";
+
+interface SupplementEntry {
+  gif_url: string | null;
+  secondary_muscles: string[];
+  instructions: string[];
+}
+
+let supplementPromise: Promise<Map<string, SupplementEntry>> | null = null;
+
+async function loadSupplement(): Promise<Map<string, SupplementEntry>> {
+  if (!supplementPromise) {
+    supplementPromise = fetch(SUPPLEMENT_URL, { next: { revalidate: 86400 } })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Supplement dataset HTTP ${res.status}`);
+        const raw = (await res.json()) as {
+          id?: string;
+          images?: string[];
+          secondaryMuscles?: string[];
+          instructions?: string[];
+        }[];
+        const map = new Map<string, SupplementEntry>();
+        for (const entry of raw) {
+          if (!entry.id) continue;
+          map.set(entry.id, {
+            gif_url: entry.images?.length ? SUPPLEMENT_IMG_BASE + entry.images[0] : null,
+            secondary_muscles: entry.secondaryMuscles || [],
+            instructions: entry.instructions || [],
+          });
+        }
+        return map;
+      })
+      .catch((error) => {
+        supplementPromise = null;
+        throw error;
+      });
+  }
+  return supplementPromise;
+}
+
+/** Fills gif_url/instructions/secondary_muscles from the source dataset when the DB row lacks them. */
+async function enrich(records: ExerciseRecord[]): Promise<ExerciseRecord[]> {
+  const needy = records.filter(
+    (r) => !r.gif_url || !r.instructions || r.instructions.length === 0 || !r.secondary_muscles || r.secondary_muscles.length === 0
+  );
+  if (needy.length === 0) return records;
+  try {
+    const supplement = await loadSupplement();
+    return records.map((r) => {
+      const extra = supplement.get(r.id);
+      if (!extra) return r;
+      return {
+        ...r,
+        gif_url: r.gif_url || extra.gif_url,
+        instructions: r.instructions && r.instructions.length > 0 ? r.instructions : extra.instructions,
+        secondary_muscles:
+          r.secondary_muscles && r.secondary_muscles.length > 0 ? r.secondary_muscles : extra.secondary_muscles,
+      };
+    });
+  } catch (error) {
+    console.error("[exercise-db] supplement enrichment failed:", error);
+    return records;
+  }
+}
+
 export interface ExerciseQuery {
   id?: string;
   query?: string;
@@ -73,11 +143,12 @@ export async function findExercises({ id, query, muscles, limit = 10 }: Exercise
   if (isCloudSqlConfigured()) {
     try {
       if (id) {
-        return await sql<ExerciseRecord>(
+        const rows = await sql<ExerciseRecord>(
           `SELECT id, name, muscle_group, equipment, gif_url, body_part, secondary_muscles, instructions, form_reference
            FROM exercises WHERE id = $1 LIMIT 1`,
           [id]
         );
+        return await enrich(rows);
       }
       const conditions: string[] = [];
       const params: unknown[] = [];
@@ -90,12 +161,13 @@ export async function findExercises({ id, query, muscles, limit = 10 }: Exercise
         conditions.push(`muscle_group ILIKE ANY($${params.length})`);
       }
       params.push(limit);
-      return await sql<ExerciseRecord>(
+      const rows = await sql<ExerciseRecord>(
         `SELECT id, name, muscle_group, equipment, gif_url, body_part, secondary_muscles, instructions
          FROM exercises ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
          ORDER BY name LIMIT $${params.length}`,
         params
       );
+      return await enrich(rows);
     } catch (error) {
       console.error("[exercise-db] Cloud SQL query failed, falling back to dataset:", error);
     }
