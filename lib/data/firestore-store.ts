@@ -6,6 +6,7 @@ import {
   getDoc,
   getDocs,
   addDoc,
+  limit as fbLimit,
   orderBy,
   query,
   setDoc,
@@ -19,6 +20,8 @@ import type {
   FoodLogRecord,
   FormAnalysisRecord,
   NotificationPreferenceRecord,
+  ConversationMeta,
+  ConversationRecord,
   ScanHistoryRecord,
   UserGoalRecord,
   WorkoutLogRecord,
@@ -196,6 +199,77 @@ export const firestoreStore: UserDataStore = {
       await deleteDoc(doc(db, "users", userId, "scanHistory", id));
     } catch (error) {
       console.error("Error deleting scan history:", error);
+    }
+  },
+
+  async saveConversation(record: ConversationRecord) {
+    try {
+      // Firestore rejects `undefined`; round-trip to drop any undefined fields.
+      const messages = JSON.parse(JSON.stringify(record.messages ?? []));
+      if (record.id) {
+        await setDoc(
+          doc(db, "users", record.user_id, "conversations", record.id),
+          { title: record.title, preview: record.preview, messages, updated_at: record.updated_at },
+          { merge: true }
+        );
+        return { ...record, messages };
+      }
+      const ref = await addDoc(sub(record.user_id, "conversations"), {
+        title: record.title,
+        preview: record.preview,
+        messages,
+        created_at: record.created_at,
+        updated_at: record.updated_at,
+      });
+      // Keep history bounded: prune everything past the 40 most recent.
+      try {
+        const snap = await getDocs(query(sub(record.user_id, "conversations"), orderBy("updated_at", "desc")));
+        await Promise.all(snap.docs.slice(40).map((d) => deleteDoc(d.ref)));
+      } catch {
+        /* pruning is best-effort */
+      }
+      return { ...record, id: ref.id, messages };
+    } catch (error) {
+      console.error("Error saving conversation:", error);
+      return null;
+    }
+  },
+
+  async listConversations(userId: string, limitTo = 40): Promise<ConversationMeta[]> {
+    try {
+      const snap = await getDocs(
+        query(sub(userId, "conversations"), orderBy("updated_at", "desc"), fbLimit(limitTo))
+      );
+      return snap.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          title: (data.title as string) || "New chat",
+          preview: (data.preview as string) || "",
+          updated_at: (data.updated_at as string) || "",
+        };
+      });
+    } catch (error) {
+      console.error("Error listing conversations:", error);
+      return [];
+    }
+  },
+
+  async getConversation(userId: string, id: string) {
+    try {
+      const snap = await getDoc(doc(db, "users", userId, "conversations", id));
+      return snap.exists() ? ({ ...(snap.data() as ConversationRecord), id: snap.id }) : null;
+    } catch (error) {
+      console.error("Error getting conversation:", error);
+      return null;
+    }
+  },
+
+  async deleteConversation(userId: string, id: string) {
+    try {
+      await deleteDoc(doc(db, "users", userId, "conversations", id));
+    } catch (error) {
+      console.error("Error deleting conversation:", error);
     }
   },
 

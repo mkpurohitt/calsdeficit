@@ -107,6 +107,26 @@ export interface ScanHistoryRecord {
   created_at: string;
 }
 
+/** A saved Home-chat conversation the user can reopen and continue. */
+export interface ConversationRecord {
+  id?: string;
+  user_id: string;
+  title: string;
+  preview: string;
+  /** Serialized chat messages (client-owned shape; text + scan/workout/exercise cards). */
+  messages: unknown[];
+  created_at: string;
+  updated_at: string;
+}
+
+/** Lightweight conversation header for the sidebar list (no messages). */
+export interface ConversationMeta {
+  id: string;
+  title: string;
+  preview: string;
+  updated_at: string;
+}
+
 export interface DateRange {
   from: string;
   to: string;

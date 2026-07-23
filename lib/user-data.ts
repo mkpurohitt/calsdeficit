@@ -3,6 +3,8 @@
 // the storage backend can change without touching UI code.
 import { store } from "./data";
 import type {
+  ConversationMeta,
+  ConversationRecord,
   DateRange,
   DayRecord,
   FoodLogRecord,
@@ -14,6 +16,8 @@ import type {
 } from "./data/types";
 
 export type {
+  ConversationMeta,
+  ConversationRecord,
   DateRange,
   DayRecord,
   FoodLogRecord,
@@ -61,6 +65,11 @@ export const saveDay = (userId: string, dateKey: string, patch: Partial<DayRecor
 export const addScanHistory = (record: Omit<ScanHistoryRecord, "id">) => store.addScanHistory(record);
 export const getScanHistory = (userId: string, limit?: number) => store.getScanHistory(userId, limit);
 export const deleteScanHistory = (userId: string, id: string) => store.deleteScanHistory(userId, id);
+
+export const saveConversation = (record: ConversationRecord) => store.saveConversation(record);
+export const listConversations = (userId: string, limit?: number) => store.listConversations(userId, limit);
+export const getConversation = (userId: string, id: string) => store.getConversation(userId, id);
+export const deleteConversation = (userId: string, id: string) => store.deleteConversation(userId, id);
 
 export const saveNotificationPreferences = (record: NotificationPreferenceRecord) =>
   store.saveNotificationPreferences(record);

@@ -1,4 +1,6 @@
 import type {
+  ConversationMeta,
+  ConversationRecord,
   DateRange,
   DayRecord,
   FoodLogRecord,
@@ -32,4 +34,9 @@ export interface UserDataStore {
   addScanHistory(record: Omit<ScanHistoryRecord, "id">): Promise<ScanHistoryRecord | null>;
   getScanHistory(userId: string, limit?: number): Promise<ScanHistoryRecord[]>;
   deleteScanHistory(userId: string, id: string): Promise<void>;
+
+  saveConversation(record: ConversationRecord): Promise<ConversationRecord | null>;
+  listConversations(userId: string, limit?: number): Promise<ConversationMeta[]>;
+  getConversation(userId: string, id: string): Promise<ConversationRecord | null>;
+  deleteConversation(userId: string, id: string): Promise<void>;
 }

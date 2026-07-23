@@ -1,7 +1,7 @@
 "use client";
-import { useState, useEffect, useCallback, useRef, ChangeEvent, KeyboardEvent } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense, ChangeEvent, KeyboardEvent } from "react";
 import { useAuth } from "../lib/AuthContext";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Send, Video, Paperclip, Plus, X, PlayCircle, Activity, Loader2, Check, Dumbbell } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
@@ -11,8 +11,20 @@ import FoodScanCard from "../components/FoodScanCard";
 import { apiFetch } from "../lib/api-client";
 import { compressImage, fileToBase64, makeImageThumb, MAX_VIDEO_BYTES } from "../lib/image-compress";
 import type { FoodScanResult } from "../lib/schemas/food-scan";
-import { getFoodLogs, getUserGoal, getDay, getDateKey, addFoodLog, addScanHistory, deleteScanHistory, saveWorkoutLog } from "../lib/user-data";
+import { getFoodLogs, getUserGoal, getDay, getDateKey, addFoodLog, addScanHistory, deleteScanHistory, saveWorkoutLog, saveConversation, getConversation } from "../lib/user-data";
 import { STEP_GOAL } from "../lib/config/app";
+
+/** Fires so the sidebar refreshes its chat list and active highlight. */
+function announceConversations(activeId: string | null) {
+  window.dispatchEvent(new CustomEvent("calolean:conversations", { detail: { activeId } }));
+}
+
+/** Compact text form of a message so the AI gets prior-turn context. */
+function toHistoryText(m: Message): string {
+  if (m.scan) return `[Shared a food scan: ${m.scan.food_name} — ${m.scan.calories} kcal]`;
+  if (m.workout) return `[Logged workout: ${m.workout.exercise_name} ${m.workout.sets}×${m.workout.reps}]`;
+  return m.text || "";
+}
 
 interface DailyStats {
   consumed: number;
@@ -174,9 +186,11 @@ function WorkoutLogCard({ workout, onLog }: { workout: WorkoutParse; onLog: () =
   );
 }
 
-export default function Dashboard() {
+function Dashboard() {
   const { user, loading } = useAuth() as { user: { uid?: string } | null; loading: boolean };
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const convParam = searchParams.get("c");
 
   const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
   const [input, setInput] = useState<string>("");
@@ -185,15 +199,56 @@ export default function Dashboard() {
   const [attachOpen, setAttachOpen] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [processingLabel, setProcessingLabel] = useState("Thinking...");
+  const [conversationId, setConversationId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const attachRef = useRef<HTMLDivElement>(null);
+  // Mirror of `messages` so handlers read the latest without stale closures.
+  const messagesRef = useRef<Message[]>(messages);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+  // Conversation id currently materialized in memory. Lets the URL-driven load
+  // effect skip a refetch that would clobber local-only fields (image previews,
+  // fileObj for "Add to diary") right after we create a chat and update ?c=….
+  const loadedConvRef = useRef<string | null>(null);
 
   const [stats, setStats] = useState<DailyStats | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
+
+  // Open the conversation named in ?c=… (or a fresh chat when absent).
+  useEffect(() => {
+    if (!user?.uid) return;
+    let cancelled = false;
+    if (convParam) {
+      // Already held in memory (we just created it and pushed ?c=…) — keep the
+      // live messages so image previews / fileObj survive the URL change.
+      if (convParam === loadedConvRef.current) {
+        setConversationId(convParam);
+        announceConversations(convParam);
+        return;
+      }
+      getConversation(user.uid, convParam).then((conv) => {
+        if (cancelled) return;
+        loadedConvRef.current = convParam;
+        if (conv && Array.isArray(conv.messages) && conv.messages.length) {
+          setMessages(conv.messages as Message[]);
+          setConversationId(conv.id ?? convParam);
+        } else {
+          setMessages(INITIAL_MESSAGES);
+          setConversationId(null);
+        }
+        announceConversations(convParam);
+      });
+    } else {
+      loadedConvRef.current = null;
+      setMessages(INITIAL_MESSAGES);
+      setConversationId(null);
+      announceConversations(null);
+    }
+    return () => { cancelled = true; };
+  }, [user, convParam]);
 
   // Live "today" snapshot for the right rail — real logged data, no placeholders.
   const loadStats = useCallback(async () => {
@@ -323,25 +378,71 @@ export default function Dashboard() {
     });
   }, [user]);
 
+  // Persist the current conversation (Claude-style history) after each turn.
+  const persistConversation = useCallback(async (msgs: Message[]) => {
+    if (!user?.uid) return;
+    if (!msgs.some((m) => m.role === "user")) return; // don't save the lone greeting
+    // Strip non-serializable/ephemeral fields; keep the cards so reopening restores them.
+    const serial = msgs.slice(-40).map((m) => ({
+      role: m.role,
+      text: m.text || "",
+      ...(m.scan ? { scan: m.scan } : {}),
+      ...(m.workout ? { workout: m.workout } : {}),
+      ...(m.exercises?.length ? { exercises: m.exercises } : {}),
+      ...(m.adKeywords?.length ? { adKeywords: m.adKeywords } : {}),
+      ...(typeof m.adsEnabled === "boolean" ? { adsEnabled: m.adsEnabled } : {}),
+    }));
+    const firstUser = msgs.find((m) => m.role === "user");
+    const last = msgs[msgs.length - 1];
+    const title = (firstUser?.text?.trim() || "New chat").slice(0, 48);
+    const preview = (last ? toHistoryText(last) : "").slice(0, 90);
+    const now = new Date().toISOString();
+    const saved = await saveConversation({
+      ...(conversationId ? { id: conversationId } : {}),
+      user_id: user.uid,
+      title,
+      preview,
+      messages: serial,
+      created_at: now,
+      updated_at: now,
+    });
+    if (saved?.id) {
+      if (saved.id !== conversationId) {
+        // Mark in-memory first so the ?c=… change below doesn't trigger a refetch.
+        loadedConvRef.current = saved.id;
+        setConversationId(saved.id);
+        router.replace(`/?c=${saved.id}`, { scroll: false });
+      }
+      announceConversations(saved.id);
+    }
+  }, [user, conversationId, router]);
+
   const handleSend = async () => {
     if (!input.trim() && !file) return;
 
-    const userMsg: Message = {
-      role: "user",
-      text: input,
-      file: file ? URL.createObjectURL(file) : null,
-      fileObj: file,
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
-    setIsProcessing(true);
-
     const currentInput = input;
     const currentFile = file;
+    const userMsg: Message = {
+      role: "user",
+      text: currentInput,
+      file: currentFile ? URL.createObjectURL(currentFile) : null,
+      fileObj: currentFile,
+    };
+
+    // Prior turns (before this message) become the AI's context.
+    const priorTurns = messagesRef.current
+      .filter((m) => (m.role === "user" || m.role === "ai") && toHistoryText(m).trim())
+      .map((m) => ({ role: m.role, text: toHistoryText(m) }));
+
+    const base = [...messagesRef.current, userMsg];
+    setMessages(base);
+    messagesRef.current = base;
+    setIsProcessing(true);
     setProcessingLabel(getProcessingLabel(currentInput, currentFile));
     setInput("");
     setFile(null);
 
+    let finalMsgs = base;
     try {
       let fileData: string | null = null;
       let mimeType: string | null = null;
@@ -360,11 +461,7 @@ export default function Dashboard() {
       const response = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: currentInput,
-          fileData: fileData,
-          mimeType: mimeType,
-        })
+        body: JSON.stringify({ message: currentInput, fileData, mimeType, history: priorTurns })
       });
 
       const data = await response.json();
@@ -373,67 +470,38 @@ export default function Dashboard() {
         if (data.kind === 'food-scan' && data.scan) {
           const scan = data.scan as FoodScanResult;
           const imgFile = currentFile?.type.startsWith("image/") ? currentFile : null;
-          setMessages((prev) => [...prev, {
-            role: "ai",
-            text: "",
-            scan,
-            // keep the source image around so "Add to diary" can attach a thumb
-            fileObj: imgFile,
-            adKeywords: data.adKeywords || [],
-            adsEnabled: data.adsEnabled ?? true,
-          }]);
-          // Record a compressed copy in scan history (Diet shows unsaved scans);
-          // removed automatically when the user adds it to the diary.
+          finalMsgs = [...base, { role: "ai", text: "", scan, fileObj: imgFile, adKeywords: data.adKeywords || [], adsEnabled: data.adsEnabled ?? true }];
+          // Record a compressed copy in scan history (Diet shows unsaved scans).
           if (user?.uid) {
             (async () => {
               try {
                 const thumb = imgFile ? await makeImageThumb(imgFile) : null;
                 const hist = await addScanHistory({
-                  user_id: user.uid!,
-                  food_name: scan.food_name,
-                  portion: scan.portion,
-                  calories: scan.calories,
-                  protein_g: scan.protein_g,
-                  carbs_g: scan.carbs_g,
-                  fat_g: scan.fat_g,
-                  fiber_g: scan.fiber_g,
-                  ...(thumb ? { photo_thumb: thumb } : {}),
-                  created_at: new Date().toISOString(),
+                  user_id: user.uid!, food_name: scan.food_name, portion: scan.portion,
+                  calories: scan.calories, protein_g: scan.protein_g, carbs_g: scan.carbs_g,
+                  fat_g: scan.fat_g, fiber_g: scan.fiber_g,
+                  ...(thumb ? { photo_thumb: thumb } : {}), created_at: new Date().toISOString(),
                 });
-                if (hist?.id) {
-                  setMessages((prev) => prev.map((m) => (m.scan === scan ? { ...m, historyId: hist.id } : m)));
-                }
-              } catch {
-                /* history is best-effort */
-              }
+                if (hist?.id) setMessages((prev) => prev.map((m) => (m.scan === scan ? { ...m, historyId: hist.id } : m)));
+              } catch { /* history is best-effort */ }
             })();
           }
         } else if (data.kind === 'workout-log' && data.workout) {
-          setMessages((prev) => [...prev, {
-            role: "ai",
-            text: typeof data.data === 'string' ? data.data : "",
-            workout: data.workout as WorkoutParse,
-            adKeywords: data.adKeywords || [],
-            adsEnabled: data.adsEnabled ?? true,
-          }]);
+          finalMsgs = [...base, { role: "ai", text: typeof data.data === 'string' ? data.data : "", workout: data.workout as WorkoutParse, adKeywords: data.adKeywords || [], adsEnabled: data.adsEnabled ?? true }];
         } else {
-          setMessages((prev) => [...prev, {
-            role: "ai",
-            text: data.data,
-            exercises: data.exercises || [],
-            adKeywords: data.adKeywords || [],
-            adsEnabled: data.adsEnabled ?? true,
-          }]);
+          finalMsgs = [...base, { role: "ai", text: data.data, exercises: data.exercises || [], adKeywords: data.adKeywords || [], adsEnabled: data.adsEnabled ?? true }];
         }
       } else {
-        setMessages((prev) => [...prev, { role: "ai", text: "Error: " + (data.error || "Unknown error") }]);
+        finalMsgs = [...base, { role: "ai", text: "Error: " + (data.error || "Unknown error") }];
       }
-
     } catch (error) {
       console.error(error);
-      setMessages((prev) => [...prev, { role: "ai", text: "Something went wrong connecting to the server." }]);
+      finalMsgs = [...base, { role: "ai", text: "Something went wrong connecting to the server." }];
     } finally {
+      setMessages(finalMsgs);
+      messagesRef.current = finalMsgs;
       setIsProcessing(false);
+      persistConversation(finalMsgs).catch((e) => console.error("[home] save conversation failed", e));
     }
   };
 
@@ -969,5 +1037,25 @@ export default function Dashboard() {
         }
       `}</style>
     </AppLayout>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div
+          className="h-screen flex items-center justify-center"
+          style={{ background: "var(--bg-app)", color: "var(--text-secondary)" }}
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-5 h-5 rounded-full recording" style={{ background: "var(--lime-400)" }} />
+            <span style={{ fontSize: 15, fontWeight: 500 }}>Loading...</span>
+          </div>
+        </div>
+      }
+    >
+      <Dashboard />
+    </Suspense>
   );
 }

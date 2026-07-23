@@ -82,7 +82,13 @@ export async function POST(req: Request) {
     const user = await requireUser(req);
     if (user instanceof NextResponse) return user;
 
-    const { message, fileData, mimeType } = await req.json();
+    const { message, fileData, mimeType, history } = await req.json();
+    const priorTurns: { role: 'user' | 'ai'; text: string }[] = Array.isArray(history)
+      ? history
+          .filter((h) => h && typeof h.text === 'string' && h.text.trim() && (h.role === 'user' || h.role === 'ai'))
+          .slice(-10)
+          .map((h) => ({ role: h.role, text: String(h.text).slice(0, 1200) }))
+      : [];
     const isImage = Boolean(fileData && typeof mimeType === 'string' && mimeType.startsWith('image/'));
     const isVideo = Boolean(fileData && typeof mimeType === 'string' && mimeType.startsWith('video/'));
 
@@ -128,7 +134,7 @@ export async function POST(req: Request) {
       }
 
       const exerciseMatches = category === 'exercise_search' ? await fetchExerciseMatches(message) : [];
-      const text = await answerChat(message, exerciseMatches);
+      const text = await answerChat(message, exerciseMatches, priorTurns);
       return NextResponse.json({
         success: true, kind: 'text', data: text,
         exercises: exerciseMatches.map((ex) => ({ id: ex.id, name: ex.name, muscle_group: ex.muscle_group, equipment: ex.equipment, gif_url: ex.gif_url })),
@@ -172,18 +178,24 @@ export async function POST(req: Request) {
   }
 }
 
-async function answerChat(message: string, exerciseMatches: Awaited<ReturnType<typeof fetchExerciseMatches>>) {
-  let systemInstruction = `You are Calolean, an expert diet & fitness coach. ONLY answer questions about food, nutrition, calories, exercise, training, and health/wellness. Answer directly and decisively — never say "it varies widely".
+async function answerChat(
+  message: string,
+  exerciseMatches: Awaited<ReturnType<typeof fetchExerciseMatches>>,
+  priorTurns: { role: 'user' | 'ai'; text: string }[] = []
+) {
+  let systemInstruction = `You are Calolean, an expert diet & fitness coach. ONLY answer questions about food, nutrition, calories, exercise, training, and health/wellness. Answer directly and decisively — never say "it varies widely". Use the prior conversation for context when the user's message is a follow-up.
 
 When asked calories/macros of a food, ALWAYS lead with one concrete number for a standard serving + the macro split (e.g. "**Masala chai (1 cup, 240 ml) ≈ 120 kcal** — 3g protein, 16g carbs, 4g fat"). Keep it tight and practical in Markdown.`;
   if (exerciseMatches.length > 0) {
     const dbResults = exerciseMatches.map((ex, i) => `${i + 1}. ${ex.name} | muscle: ${ex.muscle_group} | equipment: ${ex.equipment || 'Bodyweight'} | app_url: /exercise/${ex.id}`).join('\n');
     systemInstruction += `\n\nRecommend ONLY exercises from this official database list; highlight the best 3-5, don't invent names. The UI renders linked cards.\n${dbResults}`;
   }
-  const result = await genai().models.generateContent({
-    model: chatModelId(),
-    contents: [{ role: 'user', parts: [{ text: systemInstruction }, { text: `User: ${message}` }] }],
-  });
+  const contents = [
+    { role: 'user' as const, parts: [{ text: systemInstruction }] },
+    ...priorTurns.map((t) => ({ role: t.role === 'ai' ? ('model' as const) : ('user' as const), parts: [{ text: t.text }] })),
+    { role: 'user' as const, parts: [{ text: message }] },
+  ];
+  const result = await genai().models.generateContent({ model: chatModelId(), contents });
   return result.text ?? '';
 }
 
