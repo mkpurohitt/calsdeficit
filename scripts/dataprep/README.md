@@ -31,3 +31,41 @@ See **Step 3** of `NEXT_STEPS.md`. In short: run `db/load/staging.sql`, import
 the CSVs into the `stg_*` tables (via `gcloud sql import csv` for the big files,
 or psql `\copy` for small ones), then run `db/load/transform.sql` followed by
 `db/migrations/004_form_reference.sql`.
+
+## 3. Adding MORE free sources (evaluate → append → de-dup)
+
+An additive path for extra sources beyond USDA/OFF/free-exercise-db. Unlike
+`transform.sql` (a full rebuild), this **appends** and then de-duplicates, so
+your existing rows are kept.
+
+| Script | What it does |
+|---|---|
+| `fetch_data_sources.py` | Downloads the free English food/exercise sources to `data_eval/<key>/<key>.csv` + a per-source `_preview.txt` + `SUMMARY.csv`, so you can inspect before integrating. `--list`, `--check`, `--only`, `--kind`. |
+| `prepare_new_foods.py` | Converts `data_eval/` IFCT + Norway + CNF into one `foods_new.csv` (per-100g; IFCT energy kJ→kcal; non-English filtered). |
+| `prepare_new_exercises.py` | Converts `data_eval/` wger + RepDB + Everkinetic into `exercises_new.csv` (source-prefixed ids; RepDB carries difficulty + MET; media URLs resolved). |
+
+```bash
+python fetch_data_sources.py                 # download everything automatable
+python prepare_new_foods.py     --dir ./data_eval --out foods_new.csv
+python prepare_new_exercises.py --dir ./data_eval --out exercises_new.csv
+```
+
+Then load + de-duplicate in Cloud SQL (psql):
+
+```sql
+\i db/load/staging.sql                       -- stg_foods
+\i db/migrations/005_exercise_enrichment.sql -- adds difficulty+met_value, stg_exercises_ext
+\copy stg_foods         FROM 'foods_new.csv'     WITH (FORMAT csv, HEADER true)
+\copy stg_exercises_ext FROM 'exercises_new.csv' WITH (FORMAT csv, HEADER true)
+\i db/load/append_and_dedup.sql              -- append new sources + de-dup foods & exercises
+\i db/migrations/004_form_reference.sql      -- re-apply form-check angles (matches by name)
+```
+
+`append_and_dedup.sql` keeps one row per food name (most-complete macros, India-first
+tie-break) and one row per exercise name (prefers rows with a gif, then most
+instructions), and backfills RepDB's difficulty/MET onto same-named rows.
+
+> Licence note: `fetch_data_sources.py`'s `SUMMARY.csv` carries each source's
+> licence. wger/Everkinetic images are CC-BY-SA (hostable); RepDB is
+> attribution-only; the LogPress/ExerciseDB **GIFs are © Gym Visual** and need a
+> paid licence before hosting — metadata is fine, the GIF files are not.
