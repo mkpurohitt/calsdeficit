@@ -45,21 +45,29 @@ your existing rows are kept.
 | `prepare_new_exercises.py` | Converts `data_eval/` wger + RepDB + Everkinetic into `exercises_new.csv` (source-prefixed ids; RepDB carries difficulty + MET; media URLs resolved). |
 
 ```bash
-python fetch_data_sources.py                 # download everything automatable
+python fetch_data_sources.py                 # downloads to ./data_eval/<source>/<source>.csv
 python prepare_new_foods.py     --dir ./data_eval --out foods_new.csv
 python prepare_new_exercises.py --dir ./data_eval --out exercises_new.csv
 ```
 
-Then load + de-duplicate in Cloud SQL (psql):
+`data_eval/` is raw downloaded data — it is NOT committed to git, so on a fresh
+clone you must run `fetch_data_sources.py` first (or copy the folder in).
+Verify the CSVs are non-empty (`wc -l foods_new.csv`) before loading.
+
+Then load + de-duplicate in Cloud SQL. Run psql **from the directory holding the
+two CSVs** (e.g. the repo root) so the relative paths resolve:
 
 ```sql
 \i db/load/staging.sql                       -- stg_foods
 \i db/migrations/005_exercise_enrichment.sql -- adds difficulty+met_value, stg_exercises_ext
-\copy stg_foods         FROM 'foods_new.csv'     WITH (FORMAT csv, HEADER true)
-\copy stg_exercises_ext FROM 'exercises_new.csv' WITH (FORMAT csv, HEADER true)
-\i db/load/append_and_dedup.sql              -- append new sources + de-dup foods & exercises
+\i db/load/append_and_dedup.sql              -- \copy-loads both CSVs, appends, de-dups
 \i db/migrations/004_form_reference.sql      -- re-apply form-check angles (matches by name)
 ```
+
+`append_and_dedup.sql` runs its own `\copy` of `foods_new.csv` /
+`exercises_new.csv`, so no manual `\copy` is needed. (Pasting `\copy` at an
+interactive prompt gives `syntax error at "\"` — it must be its own line;
+running it from inside the `\i`'d script avoids that.)
 
 `append_and_dedup.sql` keeps one row per food name (most-complete macros, India-first
 tie-break) and one row per exercise name (prefers rows with a gif, then most

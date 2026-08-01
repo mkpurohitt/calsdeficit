@@ -5,20 +5,28 @@
 -- wiping the existing USDA/OFF/free-exercise-db data (unlike transform.sql,
 -- which does a full rebuild), then removes duplicates across ALL sources.
 --
--- Prereqs (run in this order):
---   1. db/load/staging.sql                 -> creates stg_foods
---   2. db/migrations/005_exercise_enrichment.sql
+-- Prereqs (run in this order), from the dir that holds foods_new.csv /
+-- exercises_new.csv (the prepare_*.py defaults):
+--   1. \i db/load/staging.sql                  -> creates stg_foods
+--   2. \i db/migrations/005_exercise_enrichment.sql
 --        -> adds exercises.difficulty + met_value, creates stg_exercises_ext
---   3. load the two prepared CSVs into staging:
---        \copy stg_foods          FROM 'foods_new.csv'     WITH (FORMAT csv, HEADER true)
---        \copy stg_exercises_ext  FROM 'exercises_new.csv' WITH (FORMAT csv, HEADER true)
---   4. \i append_and_dedup.sql
+--   3. \i db/load/append_and_dedup.sql         -> THIS script: it \copy-loads the
+--        two CSVs itself (no manual \copy needed), then appends + de-dups.
+--   4. \i db/migrations/004_form_reference.sql -> re-apply form-check angles
 --
 -- Idempotent-ish: appends are guarded so a source isn't added twice.
 -- ============================================================================
 
 \set ON_ERROR_STOP on
 SET maintenance_work_mem = '512MB';
+
+-- Load the prepared CSVs into staging. \copy works reliably inside a \i'd
+-- script (the "syntax error at \" you get interactively is from pasting \copy
+-- mid-block — it must be its own line). Paths are relative to psql's CWD.
+TRUNCATE stg_foods;
+\copy stg_foods FROM 'foods_new.csv' WITH (FORMAT csv, HEADER true)
+TRUNCATE stg_exercises_ext;
+\copy stg_exercises_ext FROM 'exercises_new.csv' WITH (FORMAT csv, HEADER true)
 
 \echo '=== FOODS: before ==='
 SELECT source, count(*) FROM foods GROUP BY source ORDER BY source;
