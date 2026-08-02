@@ -86,10 +86,18 @@ export async function analyzeFoodText({
   description,
   mealType = "Snacks",
   history,
+  userText,
 }: {
   description: string;
   mealType?: string;
   history?: string;
+  /**
+   * The user's raw message, when `description` is a normalized form of it.
+   * Portion resolution reads this: the normalizer can drop the quantity
+   * ("32 g of oats" -> "oats"), and losing the weight is exactly what makes
+   * macros wrong.
+   */
+  userText?: string;
 }): Promise<FoodScanResult> {
   const prompt = [
     TEXT_SCAN_PROMPT,
@@ -107,7 +115,9 @@ export async function analyzeFoodText({
     },
   });
 
-  return finishScan(response.text, mealType, description);
+  // Raw message wins for portion parsing; the normalized description is the
+  // fallback (it carries the quantity for follow-ups like "what about 2?").
+  return finishScan(response.text, mealType, userText ?? description, userText ? description : undefined);
 }
 
 /**
@@ -121,7 +131,8 @@ export async function analyzeFoodText({
 async function finishScan(
   text: string | undefined,
   mealType: string,
-  userText?: string
+  userText?: string,
+  altText?: string
 ): Promise<FoodScanResult> {
   if (!text) throw new Error("AI returned an empty response. Please try again.");
 
@@ -131,6 +142,7 @@ async function finishScan(
 
   const portion = resolvePortion({
     userText,
+    altText,
     aiPortionText: parsed.nutrition.portion,
     aiGrams: parsed.nutrition.portion_grams ?? null,
     foodName: parsed.food_identified || searchName,

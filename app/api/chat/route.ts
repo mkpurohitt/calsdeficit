@@ -142,6 +142,7 @@ export async function POST(req: Request) {
           // through as well — the portion resolver reads it directly.
           const data = await analyzeFoodText({
             description: food_query || message,
+            userText: message,
             mealType: 'Snacks',
             history: priorTurns.length ? historyText(priorTurns.slice(-6)) : undefined,
           });

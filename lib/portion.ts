@@ -123,7 +123,12 @@ const WORD_NUMBERS: Record<string, number> = {
   half: 0.5, quarter: 0.25,
 };
 
-const NUM = String.raw`(\d+(?:[.,]\d+)?(?:\s*\/\s*\d+)?|½|¼|¾|\d+\s*½|${Object.keys(WORD_NUMBERS).join("|")})`;
+/**
+ * A quantity. The leading lookbehind is essential: without it the spelled-out
+ * numbers match *inside* ordinary words — "d(a)(l)" would parse as 1 litre,
+ * and "me(a)(l)" likewise — so a quantity must start at a word boundary.
+ */
+const NUM = String.raw`(?<![\p{L}\d])(\d+(?:[.,]\d+)?(?:\s*\/\s*\d+)?|½|¼|¾|\d+\s*½|${Object.keys(WORD_NUMBERS).join("|")})`;
 
 /** "1/2" / "½" / "1,5" / "half" → number. */
 function toNumber(raw: string): number {
@@ -155,7 +160,7 @@ export function parseExplicitGrams(text: string | null | undefined): number | nu
 function parseMeasure(text: string | null | undefined): { grams: number; label: string } | null {
   if (!text) return null;
   const unitAlternation = Object.keys(MASS_UNITS).sort((a, b) => b.length - a.length).join("|");
-  const re = new RegExp(`${NUM}\\s*(${unitAlternation})\\b`, "gi");
+  const re = new RegExp(`${NUM}\\s*(${unitAlternation})\\b`, "giu");
   let best: { grams: number; label: string } | null = null;
   for (const m of text.matchAll(re)) {
     const qty = toNumber(m[1]);
@@ -186,7 +191,7 @@ function parseCountedGrams(text: string | null | undefined): { grams: number; la
   const itemKeys = Object.keys(ITEM_WEIGHTS).sort((a, b) => b.length - a.length);
   for (const key of itemKeys) {
     const word = key.replace(/_/g, "[ _-]?");
-    const re = new RegExp(`${NUM}\\s*(?:x\\s*)?${word}s?\\b`, "i");
+    const re = new RegExp(`${NUM}\\s*(?:x\\s*)?${word}s?\\b`, "iu");
     const m = lower.match(re);
     if (m) {
       const qty = toNumber(m[1]);
@@ -201,7 +206,7 @@ function parseCountedGrams(text: string | null | undefined): { grams: number; la
   // Household measures (cup, bowl, katori …).
   const unitKeys = Object.keys(HOUSEHOLD_UNITS).sort((a, b) => b.length - a.length);
   for (const key of unitKeys) {
-    const re = new RegExp(`${NUM}\\s*${key}\\b`, "i");
+    const re = new RegExp(`${NUM}\\s*${key}\\b`, "iu");
     const m = lower.match(re);
     if (m) {
       const qty = toNumber(m[1]);
@@ -243,12 +248,19 @@ function defaultPortionFor(foodName: string): { grams: number; label: string } {
  */
 export function resolvePortion({
   userText,
+  altText,
   aiPortionText,
   aiGrams,
   foodName,
 }: {
   /** Raw message the user typed, if any. */
   userText?: string | null;
+  /**
+   * Normalized restatement of the message (e.g. the intent router's
+   * "2 rotis" for "what about 2 of them?"). Checked only when the raw text
+   * carries no quantity of its own, so a follow-up still resolves.
+   */
+  altText?: string | null;
   /** Portion phrase the model returned, e.g. "1 plate (~350 g)". */
   aiPortionText?: string | null;
   /** Explicit gram estimate from the model. */
@@ -271,7 +283,22 @@ export function resolvePortion({
     };
   }
 
-  // 3. The model's numeric estimate (photos: it can judge the plate).
+  // 3. Same two checks against the normalized restatement, so a follow-up
+  //    like "what about 2 of them?" still resolves to a real weight.
+  const altMeasure = parseMeasure(altText);
+  if (altMeasure) {
+    return { grams: round1(altMeasure.grams), label: altMeasure.label, source: "user" };
+  }
+  const altCount = parseCountedGrams(altText);
+  if (altCount) {
+    return {
+      grams: round1(altCount.grams),
+      label: `${altCount.label} (~${formatWeight(altCount.grams)})`,
+      source: "user",
+    };
+  }
+
+  // 4. The model's numeric estimate (photos: it can judge the plate).
   if (typeof aiGrams === "number" && Number.isFinite(aiGrams) && aiGrams > 0) {
     const label = aiPortionText?.trim()
       ? /\d/.test(aiPortionText) && parseExplicitGrams(aiPortionText)
@@ -281,7 +308,7 @@ export function resolvePortion({
     return { grams: round1(aiGrams), label, source: "ai" };
   }
 
-  // 4. Weight embedded in the model's portion phrase.
+  // 5. Weight embedded in the model's portion phrase.
   const aiTextGrams = parseExplicitGrams(aiPortionText);
   if (aiTextGrams && aiTextGrams > 0) {
     return { grams: round1(aiTextGrams), label: (aiPortionText || "").trim() || formatWeight(aiTextGrams), source: "ai" };
@@ -295,7 +322,7 @@ export function resolvePortion({
     };
   }
 
-  // 5. Nothing stated anywhere — fall back to a standard serving.
+  // 6. Nothing stated anywhere — fall back to a standard serving.
   const fallback = defaultPortionFor(foodName);
   return {
     grams: fallback.grams,
