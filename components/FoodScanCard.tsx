@@ -49,15 +49,64 @@ export default function FoodScanCard({ scan, adKeywords = [], adsEnabled = true,
       ? "var(--warning)"
       : "var(--error)";
 
-  // First suggestion with a whitelisted product becomes the product card
+  // First suggestion with a whitelisted product becomes the product card.
   const productSuggestion = scan.improvement_suggestions.find(
     (s) => s.product_keyword && affiliateLinkFor(s.product_keyword)
   );
   const productLink = productSuggestion ? affiliateLinkFor(productSuggestion.product_keyword) : null;
   const textTips = scan.improvement_suggestions.filter((s) => s !== productSuggestion);
+  // Hard cap of two affiliate links per card (the product card counts as one),
+  // so advice never reads as a list of ads.
+  const MAX_AFFILIATE_LINKS = 2;
+  let linkBudget = MAX_AFFILIATE_LINKS - (productLink ? 1 : 0);
+  const tipLinkAllowed = new Set<number>();
+  textTips.forEach((tip, i) => {
+    if (linkBudget > 0 && affiliateLinkFor(tip.product_keyword)) {
+      tipLinkAllowed.add(i);
+      linkBudget -= 1;
+    }
+  });
+
+  // Weight the macros describe. When it came from a standard-serving default we
+  // say so — an assumed portion is the main reason numbers look "wrong".
+  const portionNote =
+    scan.portion_source === "default"
+      ? "Assumed a standard serving — tell me the weight for exact numbers"
+      : scan.per_100g && scan.portion_grams != null
+      ? `Scaled from ${scan.per_100g.calories} kcal per 100 g`
+      : null;
 
   return (
     <div style={{ maxWidth: 560, display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Hero image — only for text-only scans, where the user gave no photo */}
+      {scan.image_url && (
+        <figure style={{ margin: 0 }}>
+          <img
+            src={scan.image_url}
+            alt={scan.food_name}
+            loading="lazy"
+            style={{
+              width: "100%",
+              maxHeight: 200,
+              objectFit: "cover",
+              borderRadius: 14,
+              border: "1px solid var(--border-subtle)",
+              display: "block",
+            }}
+            onError={(e) => {
+              // A dead image must never leave a broken frame in the card.
+              const fig = e.currentTarget.closest("figure");
+              if (fig) fig.style.display = "none";
+            }}
+          />
+          {scan.image_attribution && (
+            <figcaption style={{ fontSize: 10.5, color: "var(--text-tertiary)", marginTop: 5 }}>
+              {scan.image_attribution}
+            </figcaption>
+          )}
+        </figure>
+      )}
+
       {/* Verification badge */}
       <div
         className="inline-flex items-center gap-1.5"
@@ -101,6 +150,9 @@ export default function FoodScanCard({ scan, adKeywords = [], adsEnabled = true,
           <div className="cl-mono" style={{ fontSize: 13, color: "var(--lime-600)", marginTop: 2 }}>
             {scan.calories} kcal · {scan.portion}
           </div>
+          {portionNote && (
+            <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 3 }}>{portionNote}</div>
+          )}
         </div>
       </div>
 
@@ -174,7 +226,7 @@ export default function FoodScanCard({ scan, adKeywords = [], adsEnabled = true,
       {textTips.length > 0 && (
         <div className="space-y-2">
           {textTips.map((suggestion, index) => {
-            const link = affiliateLinkFor(suggestion.product_keyword);
+            const link = tipLinkAllowed.has(index) ? affiliateLinkFor(suggestion.product_keyword) : null;
             return (
               <div
                 key={index}

@@ -1,11 +1,11 @@
 "use client";
 import React from "react";
-import { MessageSquare, Utensils, ShoppingBag, Dumbbell, User, Sun, Moon, Plus, Trash2 } from "lucide-react";
+import { MessageSquare, Utensils, ShoppingBag, Dumbbell, User, Sun, Moon, Menu, X } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useAuth } from "../lib/AuthContext";
-import { listConversations, deleteConversation, type ConversationMeta } from "../lib/user-data";
+import ChatHistory from "./ChatHistory";
 
 /** Calolean brand mark — masked-disc logo from the v2 design export.
  * Colors come from --logo-disc/--logo-dot so it adapts to light/dark. */
@@ -31,143 +31,32 @@ const NAV_ITEMS = [
   { name: "Profile", mobileName: "You", href: "/profile", icon: User },
 ];
 
-/** Desktop-sidebar chat history (Claude-style). Lists past Home conversations,
- * each opening `/?c=<id>` to continue with full context. Hidden on mobile via
- * `.cl-sidebar`. Stays in sync with the Home page via the
- * `calolean:conversations` window event (fired after every turn). */
-function SidebarChats() {
-  const { user } = useAuth() as { user: { uid?: string } | null };
-  const router = useRouter();
-  const [chats, setChats] = React.useState<ConversationMeta[]>([]);
-  const [activeId, setActiveId] = React.useState<string | null>(null);
-
-  const refresh = React.useCallback(() => {
-    if (!user?.uid) {
-      setChats([]);
-      return;
-    }
-    listConversations(user.uid).then(setChats).catch(() => {});
-  }, [user]);
-
-  React.useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  // Initial active id from the URL (?c=…). Read client-side so AppLayout stays
-  // free of useSearchParams (which would force a Suspense boundary everywhere).
-  React.useEffect(() => {
-    try {
-      setActiveId(new URLSearchParams(window.location.search).get("c"));
-    } catch {
-      /* noop */
-    }
-  }, []);
-
-  // Home fires this after each turn (new chat, updated preview, active change).
-  React.useEffect(() => {
-    const onConversations = (event: Event) => {
-      const detail = (event as CustomEvent<{ activeId: string | null }>).detail;
-      if (detail && "activeId" in detail) setActiveId(detail.activeId ?? null);
-      refresh();
-    };
-    window.addEventListener("calolean:conversations", onConversations);
-    return () => window.removeEventListener("calolean:conversations", onConversations);
-  }, [refresh]);
-
-  const handleDelete = async (id: string) => {
-    if (!user?.uid) return;
-    setChats((prev) => prev.filter((c) => c.id !== id)); // optimistic
-    try {
-      await deleteConversation(user.uid, id);
-    } catch {
-      /* noop */
-    }
-    if (id === activeId) {
-      setActiveId(null);
-      router.push("/");
-    }
-  };
-
-  if (!user?.uid) return null;
-
-  return (
-    <div className="cl-chats" style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1, marginTop: 20 }}>
-      <div className="flex items-center justify-between" style={{ padding: "0 11px 6px" }}>
-        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", color: "var(--text-tertiary)" }}>
-          Chats
-        </span>
-        <Link href="/" aria-label="New chat" title="New chat" className="cl-newchat">
-          <Plus size={16} />
-        </Link>
-      </div>
-
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1 }}>
-        {chats.length === 0 ? (
-          <div style={{ padding: "5px 12px", fontSize: 12.5, color: "var(--text-tertiary)" }}>No chats yet</div>
-        ) : (
-          chats.map((c) => {
-            const active = c.id === activeId;
-            return (
-              <div key={c.id} className="cl-chatrow" style={{ position: "relative" }}>
-                <Link
-                  href={`/?c=${c.id}`}
-                  className="flex items-center"
-                  title={c.title || "New chat"}
-                  style={{
-                    gap: 9,
-                    padding: "8px 32px 8px 11px",
-                    borderRadius: 9,
-                    textDecoration: "none",
-                    color: active ? "var(--text-primary)" : "var(--text-secondary)",
-                    fontWeight: active ? 600 : 500,
-                    ...(active ? { background: "var(--surface-elevated)" } : {}),
-                  }}
-                >
-                  <MessageSquare size={14} style={{ flex: "none", color: active ? "var(--lime-400)" : "var(--text-tertiary)" }} />
-                  <span className="truncate" style={{ flex: 1, fontSize: 13, minWidth: 0 }}>
-                    {c.title || "New chat"}
-                  </span>
-                </Link>
-                <button
-                  type="button"
-                  aria-label="Delete chat"
-                  className="cl-chatdel"
-                  onClick={() => handleDelete(c.id)}
-                  style={{
-                    position: "absolute",
-                    right: 5,
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    width: 24,
-                    height: 24,
-                    borderRadius: 6,
-                    border: "none",
-                    background: "transparent",
-                    color: "var(--text-tertiary)",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const { user } = useAuth() as { user: { displayName?: string | null; email?: string | null } | null };
   const [mounted, setMounted] = React.useState(false);
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
 
   React.useEffect(() => setMounted(true), []);
+
+  // Close the mobile drawer whenever the route changes (tapping a chat).
+  React.useEffect(() => setDrawerOpen(false), [pathname]);
+
+  // Lock background scroll and allow Escape to dismiss while the drawer is open.
+  React.useEffect(() => {
+    if (!drawerOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") setDrawerOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [drawerOpen]);
 
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
@@ -244,8 +133,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        {/* Past conversations (Claude-style) — desktop only */}
-        <SidebarChats />
+        {/* Past conversations (Claude-style) — desktop rail */}
+        <ChatHistory />
 
         {/* Bottom user card */}
         <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -322,7 +211,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             borderBottom: "1px solid var(--border-color)",
           }}
         >
-          <span className="flex items-center" style={{ gap: 9 }}>
+          <span className="flex items-center" style={{ gap: 6 }}>
+            <button
+              onClick={() => setDrawerOpen(true)}
+              className="btn-icon"
+              style={{ width: 36, height: 36, marginLeft: -6 }}
+              aria-label="Open chat history"
+              aria-expanded={drawerOpen}
+            >
+              <Menu size={20} />
+            </button>
             <BrandMark size={24} id="lg-top" />
             <span className="brand-wordmark" style={{ fontSize: 19, color: "var(--text-primary)" }}>
               calo<span style={{ color: "var(--lime-400)" }}>lean</span>
@@ -337,6 +235,49 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         {children}
       </main>
+
+      {/* ── Mobile chat drawer (same history UI as the desktop rail) ── */}
+      {drawerOpen && (
+        <div
+          className="cl-drawer-root"
+          style={{ position: "fixed", inset: 0, zIndex: 90 }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Chat history"
+        >
+          <div
+            onClick={() => setDrawerOpen(false)}
+            style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.55)", animation: "cl-fade .18s ease" }}
+          />
+          <aside
+            style={{
+              position: "absolute",
+              inset: "0 auto 0 0",
+              width: "min(310px, 86vw)",
+              background: "var(--bg-sidebar)",
+              borderRight: "1px solid var(--border-color)",
+              display: "flex",
+              flexDirection: "column",
+              padding: "16px 14px",
+              animation: "cl-slide-in .22s cubic-bezier(.22,1,.36,1)",
+            }}
+          >
+            <div className="flex items-center justify-between" style={{ paddingBottom: 6 }}>
+              <Link href="/" onClick={() => setDrawerOpen(false)} style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none" }}>
+                <BrandMark size={24} id="lg-drawer" />
+                <span className="brand-wordmark" style={{ fontSize: 18, color: "var(--text-primary)" }}>
+                  calo<span style={{ color: "var(--lime-400)" }}>lean</span>
+                </span>
+              </Link>
+              <button onClick={() => setDrawerOpen(false)} className="btn-icon" style={{ width: 34, height: 34 }} aria-label="Close chat history">
+                <X size={18} />
+              </button>
+            </div>
+
+            <ChatHistory onNavigate={() => setDrawerOpen(false)} />
+          </aside>
+        </div>
+      )}
 
       {/* ── Mobile bottom nav ── */}
       <nav
@@ -384,11 +325,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         .cl-newchat:hover { background: var(--surface-elevated); color: var(--text-primary); }
         .cl-chatrow a { transition: background 0.12s ease, color 0.12s ease; }
         .cl-chatrow a:hover { background: var(--surface-elevated); color: var(--text-primary); }
-        .cl-chatdel { opacity: 0; transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease; }
-        .cl-chatrow:hover .cl-chatdel { opacity: 1; }
-        .cl-chatdel:hover { color: var(--error); background: var(--surface-card); }
         .cl-chats > div:last-child::-webkit-scrollbar { width: 6px; }
         .cl-chats > div:last-child::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 99px; }
+        @keyframes cl-fade { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes cl-slide-in { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+        .cl-menuitem { transition: background 0.12s ease; }
+        .cl-menuitem:hover { background: var(--surface-elevated); }
+        .cl-chatmenu { opacity: 0; transition: opacity 0.12s ease, background 0.12s ease; }
+        .cl-chatrow:hover .cl-chatmenu { opacity: 1; }
+        .cl-chatmenu:hover { background: var(--surface-elevated); color: var(--text-primary); }
+        /* The drawer is mobile-only; a desktop resize must not leave it open. */
+        .cl-drawer-root { display: block; }
+        @media (min-width: 861px) { .cl-drawer-root { display: none; } }
+        /* Touch devices have no hover, so the row menu button is always visible. */
+        @media (hover: none) { .cl-chatmenu { opacity: 1; } }
         @media (max-width: 860px) {
           .cl-sidebar { display: none !important; }
           .cl-mobiletop { display: flex !important; }

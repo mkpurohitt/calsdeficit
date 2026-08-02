@@ -22,6 +22,16 @@ interface AdCardProps {
   enabled?: boolean;
 }
 
+/**
+ * Neutral house slot used when no whitelisted keyword matches. It keeps the
+ * "every answer ends with one card" rhythm and reserves the exact space the
+ * AdSense unit will occupy once approved — so nothing reflows on switch-over.
+ */
+const HOUSE_PROMO = {
+  label: "Calolean Picks",
+  url: "/shop",
+} as const;
+
 export default function AdCard({ keywords = [], enabled = true }: AdCardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const pushedRef = useRef(false);
@@ -31,7 +41,12 @@ export default function AdCard({ keywords = [], enabled = true }: AdCardProps) {
   const adsenseReady = Boolean(ADSENSE_CLIENT && ADSENSE_SLOT);
   // House fallback: show an affiliate product matching the context until
   // AdSense is approved, so the ad-card UX ships from day one.
-  const fallback = keywords.map((k) => affiliateLinkFor(k)).find(Boolean) || null;
+  const matched = keywords.map((k) => affiliateLinkFor(k)).find(Boolean) || null;
+  // Nothing in the whitelist matched — still render the slot (a house promo) so
+  // every answer ends with the same card and the layout is final before the
+  // AdSense/Associates IDs land.
+  const fallback = matched || HOUSE_PROMO;
+  const isHouse = !matched;
 
   useEffect(() => {
     if (!enabled || !adsenseReady || !containerRef.current) return;
@@ -138,17 +153,16 @@ export default function AdCard({ keywords = [], enabled = true }: AdCardProps) {
                 color: "var(--text-tertiary)",
               }}
             >
-              SPONSORED
+              {isHouse ? "CALOLEAN" : "SPONSORED"}
             </span>
           </div>
           <div style={{ fontSize: 11.5, color: "var(--text-tertiary)", marginTop: 2 }}>
-            Recommended for your goals — view on Amazon
+            {isHouse ? "Gear and supplements picked for your goals" : "Recommended for your goals — view on Amazon"}
           </div>
         </div>
         <a
           href={fallback.url}
-          target="_blank"
-          rel="noopener noreferrer sponsored"
+          {...(isHouse ? {} : { target: "_blank", rel: "noopener noreferrer sponsored" })}
           style={{
             flex: "none",
             textDecoration: "none",
@@ -162,7 +176,7 @@ export default function AdCard({ keywords = [], enabled = true }: AdCardProps) {
             whiteSpace: "nowrap",
           }}
         >
-          Learn more
+          {isHouse ? "Browse" : "Learn more"}
         </a>
         <button
           onClick={() => setHidden(true)}

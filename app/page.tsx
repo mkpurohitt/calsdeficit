@@ -8,16 +8,12 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import AppLayout from "../components/AppLayout";
 import AdCard from "../components/ads/AdCard";
 import FoodScanCard from "../components/FoodScanCard";
+import { announceConversations } from "../components/ChatHistory";
 import { apiFetch } from "../lib/api-client";
 import { compressImage, fileToBase64, makeImageThumb, MAX_VIDEO_BYTES } from "../lib/image-compress";
 import type { FoodScanResult } from "../lib/schemas/food-scan";
 import { getFoodLogs, getUserGoal, getDay, getDateKey, addFoodLog, addScanHistory, deleteScanHistory, saveWorkoutLog, saveConversation, getConversation } from "../lib/user-data";
 import { STEP_GOAL } from "../lib/config/app";
-
-/** Fires so the sidebar refreshes its chat list and active highlight. */
-function announceConversations(activeId: string | null) {
-  window.dispatchEvent(new CustomEvent("calolean:conversations", { detail: { activeId } }));
-}
 
 /** Compact text form of a message so the AI gets prior-turn context. */
 function toHistoryText(m: Message): string {

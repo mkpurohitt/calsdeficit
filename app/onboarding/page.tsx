@@ -13,6 +13,9 @@ import {
   kgToLbs,
   lbsToKg,
   templateWeeklyPlan,
+  HEALTH_CONDITIONS,
+  DIETARY_PREFERENCES,
+  COMMON_ALLERGIES,
   type ActivityLevel,
   type Gender,
   type GoalType,
@@ -38,6 +41,8 @@ import {
   Moon,
   Ruler,
   Scale,
+  HeartPulse,
+  Salad,
   Sun,
   Target,
   TrendingDown,
@@ -56,10 +61,12 @@ type StepKey =
   | "goalWeight"
   | "activity"
   | "days"
+  | "health"
+  | "diet"
   | "building"
   | "results";
 
-const QUESTION_STEPS: StepKey[] = ["gender", "birthdate", "height", "weight", "goal", "goalWeight", "activity", "days"];
+const QUESTION_STEPS: StepKey[] = ["gender", "birthdate", "height", "weight", "goal", "goalWeight", "activity", "days", "health", "diet"];
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -82,9 +89,14 @@ export default function OnboardingPage() {
   const [goalWeightKg, setGoalWeightKg] = useState<number | null>(null);
   const [activity, setActivity] = useState<ActivityLevel | null>(null);
   const [workoutDays, setWorkoutDays] = useState<number | null>(null);
+  const [healthConditions, setHealthConditions] = useState<string[]>([]);
+  const [healthNotes, setHealthNotes] = useState("");
+  const [dietaryPreference, setDietaryPreference] = useState<string | null>(null);
+  const [allergies, setAllergies] = useState<string[]>([]);
 
   const [plan, setPlan] = useState<PlanResult | null>(null);
   const [weeklyPlan, setWeeklyPlan] = useState<string>("");
+  const [dietPlan, setDietPlan] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -122,9 +134,12 @@ export default function OnboardingPage() {
       case "goalWeight": return goal === "Maintain Weight" || (goalWeightKg !== null && goalWeightKg >= 30 && goalWeightKg <= 250);
       case "activity": return activity !== null;
       case "days": return workoutDays !== null;
+      // Health is optional — "None" is a valid answer, so never block here.
+      case "health": return true;
+      case "diet": return dietaryPreference !== null;
       default: return true;
     }
-  }, [step, gender, birthDate, age, heightCm, weightKg, goal, goalWeightKg, activity, workoutDays]);
+  }, [step, gender, birthDate, age, heightCm, weightKg, goal, goalWeightKg, activity, workoutDays, dietaryPreference]);
 
   const next = () => {
     if (!canContinue) return;
@@ -133,7 +148,7 @@ export default function OnboardingPage() {
       setGoalWeightKg(null);
       return goTo("activity");
     }
-    if (step === "days") return buildPlan();
+    if (step === "diet") return buildPlan();
     const i = QUESTION_STEPS.indexOf(step as (typeof QUESTION_STEPS)[number]);
     goTo(QUESTION_STEPS[i + 1]);
   };
@@ -159,7 +174,7 @@ export default function OnboardingPage() {
     });
     setPlan(computed);
 
-    // AI weekly plan (graceful template fallback — never blocks the flow)
+    // AI weekly plan + diet plan (graceful template fallback — never blocks the flow)
     let weekly = templateWeeklyPlan(goal, workoutDays);
     try {
       const res = await apiFetch("/api/plan", {
@@ -175,10 +190,17 @@ export default function OnboardingPage() {
           daily_calories: computed.daily_calories,
           protein_g: computed.protein_g,
           workout_days: workoutDays,
+          // Health context so the plan avoids what it should and targets what it can
+          health_conditions: healthConditions,
+          dietary_preference: dietaryPreference,
+          allergies,
+          health_notes: healthNotes,
+          meal_targets: computed.meal_targets,
         }),
       });
       const data = await res.json();
       if (data.success && data.plan) weekly = data.plan;
+      if (data.success && data.diet_plan) setDietPlan(data.diet_plan);
     } catch {
       /* keep template */
     }
@@ -215,6 +237,11 @@ export default function OnboardingPage() {
         weight_unit: weightUnit,
         meal_targets: plan.meal_targets,
         weekly_plan: weeklyPlan,
+        diet_plan: dietPlan,
+        health_conditions: healthConditions,
+        dietary_preference: dietaryPreference ?? undefined,
+        allergies,
+        health_notes: healthNotes.trim() || undefined,
       });
       router.push("/");
     } catch (e) {
@@ -556,6 +583,109 @@ export default function OnboardingPage() {
           </StepShell>
         )}
 
+        {step === "health" && (
+          <StepShell
+            title="Anything we should plan around?"
+            subtitle="Pick what applies. This keeps your plan safe — and stays private to your account."
+          >
+            <div style={{ width: "100%", maxWidth: 560 }}>
+              <ChipGrid
+                options={[...HEALTH_CONDITIONS]}
+                selected={healthConditions}
+                onToggle={(v) =>
+                  setHealthConditions((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))
+                }
+              />
+
+              <button
+                type="button"
+                onClick={() => setHealthConditions([])}
+                className="ob-option"
+                style={{
+                  marginTop: 12,
+                  padding: "10px 16px",
+                  borderRadius: 12,
+                  cursor: "pointer",
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  width: "100%",
+                  background: healthConditions.length === 0 ? "rgba(170,255,0,.12)" : "var(--surface-card)",
+                  border: healthConditions.length === 0 ? "2px solid var(--lime-400)" : "1px solid var(--border-color)",
+                  color: healthConditions.length === 0 ? "var(--lime-400)" : "var(--text-secondary)",
+                }}
+              >
+                {healthConditions.length === 0 ? "✓ Nothing to report — I'm healthy" : "Clear all — nothing applies"}
+              </button>
+
+              <textarea
+                value={healthNotes}
+                onChange={(e) => setHealthNotes(e.target.value.slice(0, 400))}
+                placeholder="Optional: medications, injuries, or anything else we should know…"
+                rows={2}
+                style={{
+                  marginTop: 12,
+                  width: "100%",
+                  resize: "vertical",
+                  background: "var(--surface-card)",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: 12,
+                  padding: "12px 14px",
+                  fontSize: 13.5,
+                  lineHeight: 1.5,
+                  color: "var(--text-primary)",
+                  fontFamily: "inherit",
+                  outline: "none",
+                }}
+              />
+              <div style={{ fontSize: 11.5, color: "var(--text-tertiary)", marginTop: 8, textAlign: "left" }}>
+                Calolean gives nutrition and training guidance — it isn&apos;t medical advice. Check with your doctor
+                before big changes.
+              </div>
+            </div>
+          </StepShell>
+        )}
+
+        {step === "diet" && (
+          <StepShell title="How do you eat?" subtitle="So every suggestion is something you'd actually eat.">
+            <div style={{ width: "100%", maxWidth: 560, display: "flex", flexDirection: "column", gap: 10 }}>
+              {DIETARY_PREFERENCES.map((pref, i) => (
+                <button
+                  key={pref}
+                  onClick={() => setDietaryPreference(pref)}
+                  className="cl-card-hover ob-option"
+                  style={{
+                    animationDelay: `${i * 50}ms`,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: "14px 18px",
+                    borderRadius: 14,
+                    cursor: "pointer",
+                    textAlign: "left",
+                    background: dietaryPreference === pref ? "rgba(170,255,0,.12)" : "var(--surface-card)",
+                    border: dietaryPreference === pref ? "2px solid var(--lime-400)" : "1px solid var(--border-color)",
+                  }}
+                >
+                  <Salad size={17} style={{ flex: "none", color: dietaryPreference === pref ? "var(--lime-400)" : "var(--text-tertiary)" }} />
+                  <span style={{ flex: 1, fontSize: 15, fontWeight: 600 }}>{pref}</span>
+                  {dietaryPreference === pref && <Check size={18} style={{ color: "var(--lime-400)" }} />}
+                </button>
+              ))}
+
+              <div style={{ marginTop: 8, textAlign: "left" }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 9 }}>
+                  Allergies or foods to avoid <span style={{ color: "var(--text-tertiary)", fontWeight: 500 }}>(optional)</span>
+                </div>
+                <ChipGrid
+                  options={[...COMMON_ALLERGIES]}
+                  selected={allergies}
+                  onToggle={(v) => setAllergies((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))}
+                />
+              </div>
+            </div>
+          </StepShell>
+        )}
+
         {step === "building" && (
           <div style={{ textAlign: "center" }}>
             <div style={{ position: "relative", width: 110, height: 110, margin: "0 auto 26px" }}>
@@ -648,6 +778,37 @@ export default function OnboardingPage() {
                 </ReactMarkdown>
               </div>
             </div>
+
+            {/* Diet plan — built from the same goals + health answers */}
+            {dietPlan && (
+              <div
+                className="ob-option"
+                style={{ animationDelay: "340ms", background: "var(--surface-card)", border: "1px solid var(--border-color)", borderRadius: 18, padding: "20px 22px", marginBottom: 22 }}
+              >
+                <div className="flex items-center" style={{ gap: 9, marginBottom: 12 }}>
+                  <Salad size={17} style={{ color: "var(--lime-400)" }} />
+                  <div className="cl-disp" style={{ fontWeight: 700, fontSize: 16 }}>
+                    Your day of eating{dietaryPreference ? ` · ${dietaryPreference}` : ""}
+                  </div>
+                </div>
+                <div style={{ fontSize: 14, lineHeight: 1.9, color: "var(--text-secondary)" }}>
+                  <ReactMarkdown
+                    components={{
+                      p: ({ ...props }) => <p style={{ margin: 0 }} {...props} />,
+                      strong: ({ ...props }) => <strong style={{ color: "var(--lime-600)", fontWeight: 700 }} {...props} />,
+                    }}
+                  >
+                    {dietPlan}
+                  </ReactMarkdown>
+                </div>
+                {(healthConditions.length > 0 || allergies.length > 0) && (
+                  <div className="flex items-center" style={{ gap: 7, marginTop: 14, fontSize: 11.5, color: "var(--text-tertiary)" }}>
+                    <HeartPulse size={13} style={{ color: "var(--lime-600)", flex: "none" }} />
+                    Adjusted for what you told us about your health.
+                  </div>
+                )}
+              </div>
+            )}
 
             {error && (
               <div style={{ marginBottom: 14, padding: "11px 15px", borderRadius: 11, background: "rgba(255,77,77,.1)", border: "1px solid rgba(255,77,77,.35)", color: "var(--error)", fontSize: 13.5 }}>
@@ -897,6 +1058,51 @@ function FtInDial({ heightCm, setHeightCm }: { heightCm: number; setHeightCm: (c
         <Ruler size={14} style={{ color: "var(--text-tertiary)" }} />
         = <span className="cl-mono" style={{ fontWeight: 700, color: "var(--text-primary)" }}>{heightCm} cm</span>
       </div>
+    </div>
+  );
+}
+
+/** Compact multi-select chips — used for health conditions and allergies. */
+function ChipGrid({
+  options,
+  selected,
+  onToggle,
+}: {
+  options: string[];
+  selected: string[];
+  onToggle: (value: string) => void;
+}) {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+      {options.map((option, i) => {
+        const on = selected.includes(option);
+        return (
+          <button
+            key={option}
+            type="button"
+            onClick={() => onToggle(option)}
+            aria-pressed={on}
+            className="cl-card-hover ob-option"
+            style={{
+              animationDelay: `${Math.min(i, 10) * 28}ms`,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "9px 14px",
+              borderRadius: 999,
+              cursor: "pointer",
+              fontSize: 13.5,
+              fontWeight: 600,
+              background: on ? "rgba(170,255,0,.12)" : "var(--surface-card)",
+              border: on ? "2px solid var(--lime-400)" : "1px solid var(--border-color)",
+              color: on ? "var(--lime-400)" : "var(--text-secondary)",
+            }}
+          >
+            {on && <Check size={13} />}
+            {option}
+          </button>
+        );
+      })}
     </div>
   );
 }

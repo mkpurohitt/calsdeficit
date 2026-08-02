@@ -26,6 +26,17 @@ export interface UserGoalRecord {
   meal_targets?: { breakfast: number; lunch: number; dinner: number; snacks: number };
   /** Detailed AI/template weekly exercise plan (markdown) shown after onboarding */
   weekly_plan?: string;
+  /** Personalized day-of-eating plan (markdown), built from goals + health data */
+  diet_plan?: string;
+  /* ── Health context (onboarding); drives safer, tailored AI guidance ── */
+  /** Self-reported conditions, e.g. ["Type 2 diabetes", "Hypertension"] */
+  health_conditions?: string[];
+  /** e.g. "Vegetarian" | "Vegan" | "Eggetarian" | "Non-vegetarian" | "Jain" */
+  dietary_preference?: string;
+  /** Foods to never suggest, e.g. ["Peanuts", "Gluten"] */
+  allergies?: string[];
+  /** Free-text detail the user chose to add (medications, injuries, notes) */
+  health_notes?: string;
 }
 
 export interface FoodLogRecord {
@@ -117,6 +128,10 @@ export interface ConversationRecord {
   messages: unknown[];
   created_at: string;
   updated_at: string;
+  /** Pinned chats sort above the rest in the history list. */
+  pinned?: boolean;
+  /** True once the user renames the chat, so auto-titling stops overwriting it. */
+  title_custom?: boolean;
 }
 
 /** Lightweight conversation header for the sidebar list (no messages). */
@@ -125,6 +140,8 @@ export interface ConversationMeta {
   title: string;
   preview: string;
   updated_at: string;
+  pinned?: boolean;
+  title_custom?: boolean;
 }
 
 export interface DateRange {

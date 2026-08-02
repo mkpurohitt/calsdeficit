@@ -14,6 +14,20 @@ export interface ExerciseRecord {
   secondary_muscles: string[];
   instructions: string[];
   form_reference?: Record<string, unknown> | null;
+  /** beginner | intermediate | advanced (sources that provide it, e.g. RepDB). */
+  difficulty?: string | null;
+  /** Metabolic equivalent — drives calories-burned math. */
+  met_value?: number | null;
+}
+
+/**
+ * Some catalogue sources publish media over plain http, which browsers block as
+ * mixed content on our https origin. Upgrading the scheme is safe for every
+ * host we ingest and avoids a full re-import to fix stored rows.
+ */
+function secureMedia(url: string | null | undefined): string | null {
+  if (!url) return null;
+  return url.startsWith("http://") ? `https://${url.slice(7)}` : url;
 }
 
 // Open dataset used as a zero-infra fallback until Cloud SQL is loaded
@@ -120,24 +134,29 @@ async function loadSupplement(): Promise<Map<string, SupplementEntry>> {
  */
 async function enrich(records: ExerciseRecord[]): Promise<ExerciseRecord[]> {
   if (records.length === 0) return records;
+  let supplement: Map<string, SupplementEntry> | null = null;
   try {
-    const supplement = await loadSupplement();
-    return records.map((r) => {
-      const extra = supplement.get(r.id);
-      if (!extra) return r;
-      return {
-        ...r,
-        gif_url: extra.gif_url || r.gif_url,
-        frames: extra.frames.length > 0 ? extra.frames : r.gif_url ? [r.gif_url] : [],
-        instructions: extra.instructions.length > 0 ? extra.instructions : r.instructions,
-        secondary_muscles:
-          extra.secondary_muscles.length > 0 ? extra.secondary_muscles : r.secondary_muscles,
-      };
-    });
+    supplement = await loadSupplement();
   } catch (error) {
     console.error("[exercise-db] supplement enrichment failed:", error);
-    return records;
   }
+  return records.map((r) => {
+    // Rows from the newer catalogues (repdb-/wger-/ek- ids) carry their own
+    // media and aren't in the supplement — they only need the https upgrade.
+    const extra = supplement?.get(r.id);
+    const gif = secureMedia(extra?.gif_url || r.gif_url);
+    const frames = (extra?.frames.length ? extra.frames : gif ? [gif] : [])
+      .map(secureMedia)
+      .filter((u): u is string => Boolean(u));
+    return {
+      ...r,
+      gif_url: gif,
+      frames,
+      met_value: r.met_value != null ? Number(r.met_value) : null,
+      instructions: extra?.instructions.length ? extra.instructions : r.instructions,
+      secondary_muscles: extra?.secondary_muscles.length ? extra.secondary_muscles : r.secondary_muscles,
+    };
+  });
 }
 
 export interface ExerciseQuery {
@@ -152,7 +171,7 @@ export async function findExercises({ id, query, muscles, limit = 10 }: Exercise
     try {
       if (id) {
         const rows = await sql<ExerciseRecord>(
-          `SELECT id, name, muscle_group, equipment, gif_url, body_part, secondary_muscles, instructions, form_reference
+          `SELECT id, name, muscle_group, equipment, gif_url, body_part, secondary_muscles, instructions, form_reference, difficulty, met_value
            FROM exercises WHERE id = $1 LIMIT 1`,
           [id]
         );
@@ -170,7 +189,7 @@ export async function findExercises({ id, query, muscles, limit = 10 }: Exercise
       }
       params.push(limit);
       const rows = await sql<ExerciseRecord>(
-        `SELECT id, name, muscle_group, equipment, gif_url, body_part, secondary_muscles, instructions
+        `SELECT id, name, muscle_group, equipment, gif_url, body_part, secondary_muscles, instructions, difficulty, met_value
          FROM exercises ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
          ORDER BY name LIMIT $${params.length}`,
         params

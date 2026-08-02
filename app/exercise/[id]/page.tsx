@@ -7,6 +7,7 @@ import { useAuth } from "../../../lib/AuthContext";
 import { getDateKey, saveWorkoutLog } from "../../../lib/user-data";
 import { ArrowLeft, CheckCircle, Loader2, Plus, Video } from "lucide-react";
 import ExerciseGif from "../../../components/ExerciseGif";
+import { DifficultyChip, MetChip } from "../../../components/ExerciseMeta";
 
 interface ExerciseDetail {
   id: string;
@@ -18,6 +19,8 @@ interface ExerciseDetail {
   body_part?: string | null;
   secondary_muscles?: string[];
   instructions?: string[];
+  difficulty?: string | null;
+  met_value?: number | null;
 }
 
 export default function ExerciseDetailPage() {
@@ -133,6 +136,8 @@ export default function ExerciseDetailPage() {
                       {exercise.body_part}
                     </span>
                   )}
+                  <DifficultyChip difficulty={exercise.difficulty} size="md" />
+                  <MetChip met={exercise.met_value} size="md" />
                 </div>
                 {exercise.secondary_muscles && exercise.secondary_muscles.length > 0 && (
                   <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, marginTop: 18 }}>

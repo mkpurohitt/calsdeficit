@@ -6,6 +6,7 @@ import AppLayout from "../../../components/AppLayout";
 import { ArrowLeft, ChevronRight, Search } from "lucide-react";
 
 import ExerciseGif from "../../../components/ExerciseGif";
+import { DifficultyChip, MetChip } from "../../../components/ExerciseMeta";
 
 interface ExerciseItem {
   id: string;
@@ -14,6 +15,8 @@ interface ExerciseItem {
   equipment?: string | null;
   gif_url?: string | null;
   frames?: string[];
+  difficulty?: string | null;
+  met_value?: number | null;
 }
 
 const FILTERS = ["All", "Chest", "Back", "Legs", "Arms", "Shoulders", "Core"] as const;
@@ -260,6 +263,8 @@ export default function MuscleLibraryPage() {
                           {exercise.equipment}
                         </span>
                       )}
+                      <DifficultyChip difficulty={exercise.difficulty} />
+                      <MetChip met={exercise.met_value} />
                     </div>
                   </div>
                   <ChevronRight size={18} style={{ color: "var(--text-tertiary)", flex: "none" }} />

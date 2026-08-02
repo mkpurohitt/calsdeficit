@@ -70,6 +70,9 @@ export const saveConversation = (record: ConversationRecord) => store.saveConver
 export const listConversations = (userId: string, limit?: number) => store.listConversations(userId, limit);
 export const getConversation = (userId: string, id: string) => store.getConversation(userId, id);
 export const deleteConversation = (userId: string, id: string) => store.deleteConversation(userId, id);
+export const renameConversation = (userId: string, id: string, title: string) => store.renameConversation(userId, id, title);
+export const setConversationPinned = (userId: string, id: string, pinned: boolean) =>
+  store.setConversationPinned(userId, id, pinned);
 
 export const saveNotificationPreferences = (record: NotificationPreferenceRecord) =>
   store.saveNotificationPreferences(record);

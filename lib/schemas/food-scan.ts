@@ -27,6 +27,8 @@ export const foodScanAiSchema = z.object({
     fat_g: z.number().catch(0),
     fiber_g: z.number().catch(0),
     portion: z.string().catch("1 serving (estimated)"),
+    /** Numeric weight of `portion` in grams — what the per-100g DB scaling uses. */
+    portion_grams: z.number().nullable().optional().catch(null),
   }),
 });
 
@@ -78,9 +80,14 @@ export const foodScanResponseSchema: Schema = {
         carbs_g: { type: Type.NUMBER },
         fat_g: { type: Type.NUMBER },
         fiber_g: { type: Type.NUMBER },
-        portion: { type: Type.STRING, description: "Estimated visible portion, e.g. '1 plate (~350g)'" },
+        portion: { type: Type.STRING, description: "Human portion phrase, e.g. '1 plate (~350g)' or '2 rotis'" },
+        portion_grams: {
+          type: Type.NUMBER,
+          description:
+            "The portion's total edible weight in GRAMS (millilitres for liquids). Always give your best numeric estimate — e.g. 2 rotis = 90, 1 katori dal = 150, 1 plate biryani = 350. Never 0.",
+        },
       },
-      required: ["calories", "protein_g", "carbs_g", "fat_g", "fiber_g", "portion"],
+      required: ["calories", "protein_g", "carbs_g", "fat_g", "fiber_g", "portion", "portion_grams"],
     },
   },
   required: ["food_identified", "search_name", "suggested_ad_keywords", "structured_review", "nutrition"],
@@ -90,6 +97,15 @@ export const foodScanResponseSchema: Schema = {
 export interface FoodScanResult {
   food_name: string;
   portion: string;
+  /** Resolved portion weight the macros below correspond to. */
+  portion_grams?: number;
+  /** Where the weight came from — "default" means we assumed a standard serving. */
+  portion_source?: "user" | "ai" | "default";
+  /** Reference macros per 100 g (present when a database match was scaled). */
+  per_100g?: { calories: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number } | null;
+  /** Hero image for text-only scans (no user photo). */
+  image_url?: string | null;
+  image_attribution?: string | null;
   calories: number;
   protein_g: number;
   carbs_g: number;

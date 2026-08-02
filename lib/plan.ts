@@ -184,3 +184,45 @@ export function templateWeeklyPlan(goal: GoalType, workoutDays: number = 4): str
     `**Sun — Rest** · ${cardio}`,
   ].join("\n");
 }
+
+/* ── Health context options (onboarding) ─────────────────────────────────── */
+
+/** Conditions common enough to change nutrition guidance, in plain language. */
+export const HEALTH_CONDITIONS = [
+  "Type 2 diabetes",
+  "Type 1 diabetes",
+  "Pre-diabetes",
+  "High blood pressure",
+  "High cholesterol",
+  "Thyroid (hypo/hyper)",
+  "PCOS / PCOD",
+  "Heart condition",
+  "Fatty liver",
+  "Kidney issues",
+  "Acidity / GERD",
+  "IBS / gut issues",
+  "Asthma",
+  "Joint pain / arthritis",
+  "Pregnant / breastfeeding",
+  "Recent injury or surgery",
+] as const;
+
+export const DIETARY_PREFERENCES = [
+  "Vegetarian",
+  "Eggetarian",
+  "Non-vegetarian",
+  "Vegan",
+  "Jain",
+] as const;
+
+export const COMMON_ALLERGIES = [
+  "Milk / lactose",
+  "Gluten / wheat",
+  "Peanuts",
+  "Tree nuts",
+  "Soy",
+  "Eggs",
+  "Fish",
+  "Shellfish",
+  "Sesame",
+] as const;

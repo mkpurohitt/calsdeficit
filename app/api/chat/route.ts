@@ -3,8 +3,10 @@ import { Type, type Schema } from '@google/genai';
 import { genai, chatModelId, visionModelId } from '../../../lib/server/genai';
 import { findExercises } from '../../../lib/server/exercise-db';
 import { analyzeFoodImage, analyzeFoodText } from '../../../lib/food-analysis';
+import { findFoodImage } from '../../../lib/server/food-image';
 import { parseWorkout } from '../../../lib/server/workout-parse';
 import { requireUser } from '../../../lib/server/auth';
+import { getUserContext, describeUserContext, healthSafetyRider } from '../../../lib/server/user-profile';
 import { consumeUsage, usageLimitMessage, type UsageKind } from '../../../lib/server/usage';
 import { tierConfig } from '../../../lib/entitlements';
 
@@ -40,6 +42,11 @@ async function fetchExerciseMatches(message: string) {
   return [];
 }
 
+/** Flattened prior turns for prompts that take plain text context. */
+function historyText(turns: { role: 'user' | 'ai'; text: string }[]): string {
+  return turns.map((t) => `${t.role === 'ai' ? 'Calolean' : 'User'}: ${t.text}`).join('\n');
+}
+
 /** AI intent router: decides how a text message should be answered. */
 type Category = 'food' | 'workout_log' | 'exercise_search' | 'fitness_advice' | 'off_topic';
 
@@ -50,27 +57,48 @@ const classifySchema: Schema = {
       type: Type.STRING,
       enum: ['food', 'workout_log', 'exercise_search', 'fitness_advice', 'off_topic'],
       description:
-        "food = the user names/describes a food or drink or asks its calories/macros/nutrition (incl. 'i ate X'); workout_log = the user reports HAVING DONE an exercise to log it (e.g. 'i did bench 4x8'); exercise_search = asks which exercises to do or how to do a movement; fitness_advice = other diet/training/nutrition/wellness question; off_topic = anything NOT about food, nutrition, exercise, fitness, or health.",
+        "food = the user names/describes a food or drink or asks its calories/macros/nutrition (incl. 'i ate X', and follow-ups like 'what about 2 of them?'); workout_log = the user reports HAVING DONE an exercise to log it (e.g. 'i did bench 4x8'); exercise_search = asks which exercises to do or how to do a movement; fitness_advice = other diet/training/nutrition/wellness/health question, INCLUDING follow-up questions about a previous answer; off_topic = anything NOT about food, nutrition, exercise, fitness, or health.",
     },
-    food_query: { type: Type.STRING, description: 'If category=food, a concise normalized food description, else empty.' },
+    food_query: {
+      type: Type.STRING,
+      description:
+        "If category=food, a self-contained food description with the quantity the user means, resolving pronouns from the conversation (e.g. prior 'roti' + 'what about 3?' -> '3 rotis'). Else empty.",
+    },
+    is_follow_up: {
+      type: Type.BOOLEAN,
+      description: 'True when this message only makes sense in the context of the previous turns.',
+    },
   },
   required: ['category'],
 };
 
-async function classify(message: string): Promise<{ category: Category; food_query: string }> {
+async function classify(
+  message: string,
+  priorTurns: { role: 'user' | 'ai'; text: string }[]
+): Promise<{ category: Category; food_query: string; is_follow_up: boolean }> {
   try {
+    const context = priorTurns.length
+      ? `Conversation so far:\n${historyText(priorTurns.slice(-6))}\n\n`
+      : '';
     const res = await genai().models.generateContent({
       model: visionModelId(),
-      contents: [{ role: 'user', parts: [{ text: `Classify this message from a diet & fitness app user. Message: "${message}"` }] }],
+      contents: [{
+        role: 'user',
+        parts: [{ text: `${context}Classify this new message from a diet & fitness app user. Message: "${message}"` }],
+      }],
       config: { responseMimeType: 'application/json', responseSchema: classifySchema, temperature: 0 },
     });
     const parsed = JSON.parse(res.text || '{}');
     const category = (['food', 'workout_log', 'exercise_search', 'fitness_advice', 'off_topic'].includes(parsed.category)
       ? parsed.category : 'fitness_advice') as Category;
-    return { category, food_query: typeof parsed.food_query === 'string' ? parsed.food_query : '' };
+    return {
+      category,
+      food_query: typeof parsed.food_query === 'string' ? parsed.food_query : '',
+      is_follow_up: Boolean(parsed.is_follow_up),
+    };
   } catch (error) {
     console.error('[Chat API] classify failed, defaulting to advice:', error);
-    return { category: 'fitness_advice', food_query: '' };
+    return { category: 'fitness_advice', food_query: '', is_follow_up: false };
   }
 }
 
@@ -94,7 +122,7 @@ export async function POST(req: Request) {
 
     // ── Text-only: classify first (unmetered) so off-topic refusals are free ──
     if (!fileData && message) {
-      const { category, food_query } = await classify(message);
+      const { category, food_query } = await classify(message, priorTurns);
 
       if (category === 'off_topic') {
         return NextResponse.json({
@@ -110,9 +138,19 @@ export async function POST(req: Request) {
 
       if (category === 'food') {
         try {
-          const data = await analyzeFoodText({ description: food_query || message, mealType: 'Snacks' });
+          // The quantity lives in the raw message ("32 g of oats"), so pass it
+          // through as well — the portion resolver reads it directly.
+          const data = await analyzeFoodText({
+            description: food_query || message,
+            mealType: 'Snacks',
+            history: priorTurns.length ? historyText(priorTurns.slice(-6)) : undefined,
+          });
+          // No photo was uploaded, so give the card a hero image of the dish.
+          const image = await findFoodImage(data.food_name);
           return NextResponse.json({
-            success: true, kind: 'food-scan', scan: data,
+            success: true,
+            kind: 'food-scan',
+            scan: { ...data, image_url: image?.url ?? null, image_attribution: image?.attribution ?? null },
             adKeywords: adsEnabled ? data.suggested_ad_keywords : [], adsEnabled, exercises: [], usage: usagePayload,
           });
         } catch (error) {
@@ -134,10 +172,10 @@ export async function POST(req: Request) {
       }
 
       const exerciseMatches = category === 'exercise_search' ? await fetchExerciseMatches(message) : [];
-      const text = await answerChat(message, exerciseMatches, priorTurns);
+      const text = await answerChat(message, exerciseMatches, priorTurns, user.uid);
       return NextResponse.json({
         success: true, kind: 'text', data: text,
-        exercises: exerciseMatches.map((ex) => ({ id: ex.id, name: ex.name, muscle_group: ex.muscle_group, equipment: ex.equipment, gif_url: ex.gif_url })),
+        exercises: exerciseMatches.map((ex) => ({ id: ex.id, name: ex.name, muscle_group: ex.muscle_group, equipment: ex.equipment, gif_url: ex.gif_url, difficulty: ex.difficulty, met_value: ex.met_value })),
         adKeywords: adsEnabled ? deriveChatAdKeywords(false, exerciseMatches.map((e) => e.muscle_group)) : [], adsEnabled, usage: usagePayload,
       });
     }
@@ -151,7 +189,11 @@ export async function POST(req: Request) {
 
     if (isImage) {
       const data = await analyzeFoodImage({
-        base64Data: String(fileData).split(',').pop() as string, mimeType, mealType: 'Snacks', userContext: message || undefined,
+        base64Data: String(fileData).split(',').pop() as string,
+        mimeType,
+        mealType: 'Snacks',
+        userContext: message || undefined,
+        history: priorTurns.length ? historyText(priorTurns.slice(-4)) : undefined,
       });
       return NextResponse.json({
         success: true, kind: 'food-scan', scan: data,
@@ -181,15 +223,33 @@ export async function POST(req: Request) {
 async function answerChat(
   message: string,
   exerciseMatches: Awaited<ReturnType<typeof fetchExerciseMatches>>,
-  priorTurns: { role: 'user' | 'ai'; text: string }[] = []
+  priorTurns: { role: 'user' | 'ai'; text: string }[] = [],
+  uid?: string
 ) {
-  let systemInstruction = `You are Calolean, an expert diet & fitness coach. ONLY answer questions about food, nutrition, calories, exercise, training, and health/wellness. Answer directly and decisively — never say "it varies widely". Use the prior conversation for context when the user's message is a follow-up.
+  const ctx = uid ? await getUserContext(uid) : null;
 
-When asked calories/macros of a food, ALWAYS lead with one concrete number for a standard serving + the macro split (e.g. "**Masala chai (1 cup, 240 ml) ≈ 120 kcal** — 3g protein, 16g carbs, 4g fat"). Keep it tight and practical in Markdown.`;
+  let systemInstruction = `You are Calolean, an expert diet & fitness coach. ONLY answer questions about food, nutrition, calories, exercise, training, and health/wellness.
+
+HOW TO ANSWER
+- Be decisive and concrete. Never say "it varies widely" — commit to a number or a recommendation, then note the one variable that would change it.
+- Treat the conversation as continuous: resolve "it", "that", "instead" against earlier turns, and don't re-ask what the user already told you.
+- Lead with the answer, then the reasoning. Keep it tight, practical Markdown.
+- When asked calories/macros of a food, ALWAYS lead with one concrete number for a stated serving plus the macro split (e.g. "**Masala chai (1 cup, 240 ml) ≈ 120 kcal** — 3g protein, 16g carbs, 4g fat"). If the user names a weight, do the arithmetic for THAT weight.
+- End with one specific next step or a question that moves them forward — never a generic "let me know if you have questions".`;
+
+  systemInstruction += describeUserContext(ctx);
+  systemInstruction += healthSafetyRider(ctx);
+
   if (exerciseMatches.length > 0) {
-    const dbResults = exerciseMatches.map((ex, i) => `${i + 1}. ${ex.name} | muscle: ${ex.muscle_group} | equipment: ${ex.equipment || 'Bodyweight'} | app_url: /exercise/${ex.id}`).join('\n');
-    systemInstruction += `\n\nRecommend ONLY exercises from this official database list; highlight the best 3-5, don't invent names. The UI renders linked cards.\n${dbResults}`;
+    const dbResults = exerciseMatches
+      .map((ex, i) =>
+        `${i + 1}. ${ex.name} | muscle: ${ex.muscle_group} | equipment: ${ex.equipment || 'Bodyweight'}` +
+        `${ex.difficulty ? ` | difficulty: ${ex.difficulty}` : ''}${ex.met_value ? ` | MET: ${ex.met_value}` : ''} | app_url: /exercise/${ex.id}`
+      )
+      .join('\n');
+    systemInstruction += `\n\nRecommend ONLY exercises from this official database list; highlight the best 3-5, don't invent names. Match the difficulty to the user's experience where known. The UI renders linked cards.\n${dbResults}`;
   }
+
   const contents = [
     { role: 'user' as const, parts: [{ text: systemInstruction }] },
     ...priorTurns.map((t) => ({ role: t.role === 'ai' ? ('model' as const) : ('user' as const), parts: [{ text: t.text }] })),

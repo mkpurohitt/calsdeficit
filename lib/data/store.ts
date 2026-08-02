@@ -39,4 +39,6 @@ export interface UserDataStore {
   listConversations(userId: string, limit?: number): Promise<ConversationMeta[]>;
   getConversation(userId: string, id: string): Promise<ConversationRecord | null>;
   deleteConversation(userId: string, id: string): Promise<void>;
+  renameConversation(userId: string, id: string, title: string): Promise<void>;
+  setConversationPinned(userId: string, id: string, pinned: boolean): Promise<void>;
 }

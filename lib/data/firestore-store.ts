@@ -207,9 +207,24 @@ export const firestoreStore: UserDataStore = {
       // Firestore rejects `undefined`; round-trip to drop any undefined fields.
       const messages = JSON.parse(JSON.stringify(record.messages ?? []));
       if (record.id) {
+        // A user-renamed chat keeps its title — auto-titling from the first
+        // message must not clobber it on the next turn.
+        const ref = doc(db, "users", record.user_id, "conversations", record.id);
+        let keepTitle = false;
+        try {
+          const existing = await getDoc(ref);
+          keepTitle = Boolean(existing.exists() && existing.data()?.title_custom);
+        } catch {
+          /* fall through to the normal update */
+        }
         await setDoc(
-          doc(db, "users", record.user_id, "conversations", record.id),
-          { title: record.title, preview: record.preview, messages, updated_at: record.updated_at },
+          ref,
+          {
+            ...(keepTitle ? {} : { title: record.title }),
+            preview: record.preview,
+            messages,
+            updated_at: record.updated_at,
+          },
           { merge: true }
         );
         return { ...record, messages };
@@ -222,9 +237,11 @@ export const firestoreStore: UserDataStore = {
         updated_at: record.updated_at,
       });
       // Keep history bounded: prune everything past the 40 most recent.
+      // Pinned chats are never pruned — the user explicitly kept them.
       try {
         const snap = await getDocs(query(sub(record.user_id, "conversations"), orderBy("updated_at", "desc")));
-        await Promise.all(snap.docs.slice(40).map((d) => deleteDoc(d.ref)));
+        const prunable = snap.docs.filter((d) => !d.data()?.pinned);
+        await Promise.all(prunable.slice(40).map((d) => deleteDoc(d.ref)));
       } catch {
         /* pruning is best-effort */
       }
@@ -240,15 +257,22 @@ export const firestoreStore: UserDataStore = {
       const snap = await getDocs(
         query(sub(userId, "conversations"), orderBy("updated_at", "desc"), fbLimit(limitTo))
       );
-      return snap.docs.map((d) => {
+      const rows = snap.docs.map((d) => {
         const data = d.data();
         return {
           id: d.id,
           title: (data.title as string) || "New chat",
           preview: (data.preview as string) || "",
           updated_at: (data.updated_at as string) || "",
+          pinned: Boolean(data.pinned),
+          title_custom: Boolean(data.title_custom),
         };
       });
+      // Pinned first, then most-recent. Sorted client-side so no composite
+      // Firestore index is required.
+      return rows.sort((a, b) =>
+        a.pinned === b.pinned ? b.updated_at.localeCompare(a.updated_at) : a.pinned ? -1 : 1
+      );
     } catch (error) {
       console.error("Error listing conversations:", error);
       return [];
@@ -270,6 +294,29 @@ export const firestoreStore: UserDataStore = {
       await deleteDoc(doc(db, "users", userId, "conversations", id));
     } catch (error) {
       console.error("Error deleting conversation:", error);
+    }
+  },
+
+  async renameConversation(userId: string, id: string, title: string) {
+    try {
+      const clean = title.trim().slice(0, 80);
+      if (!clean) return;
+      // title_custom stops the per-turn auto-title from overwriting this.
+      await setDoc(
+        doc(db, "users", userId, "conversations", id),
+        { title: clean, title_custom: true },
+        { merge: true }
+      );
+    } catch (error) {
+      console.error("Error renaming conversation:", error);
+    }
+  },
+
+  async setConversationPinned(userId: string, id: string, pinned: boolean) {
+    try {
+      await setDoc(doc(db, "users", userId, "conversations", id), { pinned }, { merge: true });
+    } catch (error) {
+      console.error("Error pinning conversation:", error);
     }
   },
 
