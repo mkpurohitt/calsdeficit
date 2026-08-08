@@ -5,53 +5,58 @@
    ──────────────────────────────────────────────── */
 
 :root {
-  /* ── Brand Accent ── */
-  --lime-400: #AAFF00;
-  --lime-500: #8FE000;
-  --lime-600: #72B800;
-  --lime-100: #EEFFCC;
-  --lime-950: #1A2600;
+  /* ── Brand palette (Calolean design system) ──
+     Sea green is the primary; kelly/mint are the supporting greens. The
+     --lime-* names are kept as aliases because ~200 call sites reference them —
+     re-pointing the tokens re-themes the whole app without touching each one. */
+  --sea-green:      #2E9B57;
+  --sea-green-dark: #24713F;
+  --sea-green-deep: #1C5A32;
+  --kelly-green:    #4CB817;
+  --mint-green:     #98FF98;
+  --light-green:    #90EE90;
+  --charcoal-green: #314D3E;
+  --cream:          #FBF8F3;
 
-  /* ── Dark Mode Backgrounds ── */
-  --dark-950: #0A0C0F;
-  --dark-900: #0F1218;
-  --dark-800: #161B24;
-  --dark-700: #1E2533;
-  --dark-600: #252D3D;
-  --dark-500: #2E3848;
-  --dark-400: #3D4A5C;
+  /* Supporting accents from the palette */
+  --terracotta:  #A0522D;
+  --rose-gold:   #D4A5A5;
+  --deep-plum:   #6B4C9A;
+  --warm-teal:   #20B2AA;
+  --sage-purple: #9B8B9E;
 
-  /* ── Light Mode Backgrounds ── */
-  --light-50:  #FFFFFF;
-  --light-100: #F8F9FB;
-  --light-200: #F1F3F7;
-  --light-300: #E8ECF2;
-  --light-400: #D8DDE8;
-  --light-500: #C2C9D6;
+  /* ── Accent aliases (light mode values; .dark overrides below) ──
+     --accent      : fills — buttons, active nav, progress bars
+     --accent-text : accent used AS text/icons on a page background
+     --on-accent   : text/icons placed ON an accent fill
+     --accent-soft : low-opacity accent wash for chips and active rows */
+  /* The palette's #2E9B57 only reaches 3.5:1 under white text and 3.3:1 as text
+     on cream — both below WCAG AA. These are the same sea green a shade deeper,
+     which passes in both directions (4.8:1 and 4.5:1). */
+  --accent:      #27824B;
+  --accent-text: #1F6B3D;
+  --on-accent:   #FFFFFF;
+  --accent-soft: rgba(39, 130, 75, 0.12);
+  --accent-ring: rgba(39, 130, 75, 0.30);
 
-  /* ── Text — Dark Mode ── */
-  --text-primary-dark: #FFFFFF;
-  --text-secondary-dark: #A0ABBF;
-  --text-tertiary-dark: #6B7A94;
-  --text-disabled-dark: #3D4A5C;
+  /* Legacy aliases — every existing var(--lime-*) now resolves to the new brand */
+  --lime-400: var(--accent);
+  --lime-500: var(--sea-green-dark);
+  --lime-600: var(--accent-text);
+  --lime-100: #E6F4EC;
+  --lime-950: #0F2418;
 
-  /* ── Text — Light Mode ── */
-  --text-primary-light: #0F1218;
-  --text-secondary-light: #4A5568;
-  --text-tertiary-light: #718096;
-  --text-disabled-light: #CBD5E0;
+  /* ── Status ── */
+  --success: #2E9B57;
+  --warning: #A0522D;
+  --error:   #E74C3C;
+  --info:    #20B2AA;
 
-  /* ── Semantic Colors ── */
-  --success: #AAFF00;
-  --warning: #FFB800;
-  --error: #FF4D4D;
-  --info: #4D9EFF;
-
-  /* ── Macro Colors ── */
-  --macro-protein: #AAFF00;
-  --macro-carbs: #FFB800;
-  --macro-fat: #FF6B4D;
-  --macro-fiber: #4D9EFF;
+  /* ── Macro colors (distinct hues that sit well on cream and deep green) ── */
+  --macro-protein: #2E9B57;
+  --macro-carbs:   #A0522D;
+  --macro-fat:     #D4A5A5;
+  --macro-fiber:   #20B2AA;
 
   /* ── Spacing ── */
   --space-1: 4px;
@@ -75,9 +80,9 @@
   --radius-full: 9999px;
 
   /* ── Shadows — Dark ── */
-  --shadow-lime-sm: 0 0 12px rgba(170, 255, 0, 0.15);
-  --shadow-lime-md: 0 0 24px rgba(170, 255, 0, 0.20);
-  --shadow-lime-lg: 0 0 48px rgba(170, 255, 0, 0.25);
+  --shadow-lime-sm: 0 0 12px color-mix(in srgb, var(--accent) 15%, transparent);
+  --shadow-lime-md: 0 0 24px color-mix(in srgb, var(--accent) 20%, transparent);
+  --shadow-lime-lg: 0 0 48px color-mix(in srgb, var(--accent) 25%, transparent);
   --shadow-card-dark: 0 4px 24px rgba(0, 0, 0, 0.4);
   --shadow-modal-dark: 0 8px 48px rgba(0, 0, 0, 0.6);
 
@@ -89,44 +94,58 @@
 
   /* ── Typography (loaded via next/font in app/layout.tsx) ── */
   --font-sans: var(--font-inter, 'Inter'), -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-display: var(--font-space-grotesk, 'Space Grotesk'), var(--font-sans);
+  --font-display: var(--font-playfair, 'Playfair Display'), Georgia, serif;
   --font-mono: var(--font-jetbrains-mono, 'JetBrains Mono'), 'Fira Code', monospace;
 
-  /* ── Semantic Mapping — Light Mode (values from the Calolean design export) ── */
-  --bg-app:          #F6F7FA;
+  /* ── Semantic Mapping — Light Mode (Calolean design system) ── */
+  --bg-app:          #FBF8F3;   /* cream */
   --bg-sidebar:      #FFFFFF;
   --surface-card:    #FFFFFF;
-  --surface-elevated: #F1F3F7;
-  --surface-hover:   #E8ECF2;
-  --input-bg:        #F1F3F7;
-  --border-color:    #E4E8EF;
-  --border-subtle:   #EDF0F4;
-  --text-primary:    #0F1218;
-  --text-secondary:  #54607A;
-  --text-tertiary:   #8A95AC;
-  --ring-track:      #E8ECF2;
-  --logo-disc:       #0F1218;
-  --logo-dot:        #76BA00;
-  --shadow-card:     0 1px 2px rgba(16, 18, 24, 0.04), 0 8px 24px rgba(16, 18, 24, 0.05);
+  --surface-elevated: #F4F0E9;
+  --surface-hover:   #EDE7DD;
+  --input-bg:        #FFFFFF;
+  --border-color:    #E4DDD2;
+  --border-subtle:   #EFE9DF;
+  --text-primary:    #314D3E;   /* charcoal green */
+  --text-secondary:  #666666;
+  --text-tertiary:   #999999;
+  --ring-track:      #EDE7DD;
+  --logo-disc:       #314D3E;
+  --logo-dot:        var(--kelly-green);
+  --shadow-card:     0 2px 8px rgba(49, 77, 62, 0.05), 0 8px 24px rgba(49, 77, 62, 0.05);
 }
 
-/* Dark mode — class-based (values from the Calolean design export) */
+/* Dark mode — class-based (Calolean design system) */
 .dark {
-  --bg-app:          #0A0C0F;
-  --bg-sidebar:      #0C0F14;
-  --surface-card:    #13171F;
-  --surface-elevated: #1B212C;
-  --surface-hover:   #232B38;
-  --input-bg:        #1B212C;
-  --border-color:    #262F3D;
-  --border-subtle:   #1E2531;
-  --text-primary:    #F5F7FA;
-  --text-secondary:  #9AA6BC;
-  --text-tertiary:   #646F86;
-  --ring-track:      #1E2531;
-  --logo-disc:       var(--lime-400);
+  /* On a deep-green ground, #2E9B57 is too dim to read as the accent, so the
+     fills lift toward kelly green and accent TEXT uses mint for contrast. */
+  --accent:      #35B063;
+  --accent-text: #7FE3A3;
+  --on-accent:   #0F1613;
+  --accent-soft: rgba(53, 176, 99, 0.16);
+  --accent-ring: rgba(53, 176, 99, 0.35);
+
+  --bg-app:          #0F1613;
+  --bg-sidebar:      #131B17;
+  --surface-card:    #1A1F1C;
+  --surface-elevated: #222B26;
+  --surface-hover:   #2A3330;
+  --input-bg:        #1A1F1C;
+  --border-color:    #2A3330;
+  --border-subtle:   #222B26;
+  --text-primary:    #F5F5F5;
+  --text-secondary:  #B0B0B0;
+  --text-tertiary:   #808080;
+  --ring-track:      #222B26;
+  --logo-disc:       var(--accent);
   --logo-dot:        #FFFFFF;
-  --shadow-card:     0 4px 24px rgba(0, 0, 0, 0.4);
+  --shadow-card:     0 4px 24px rgba(0, 0, 0, 0.45);
+
+  /* Macro hues brightened for the dark ground */
+  --macro-protein: #4ECB80;
+  --macro-carbs:   #D98C5F;
+  --macro-fat:     #E8BEBE;
+  --macro-fiber:   #45C9C1;
 }
 
 /* ────────────────────────────────────────────
@@ -176,8 +195,8 @@ img, video, svg, canvas {
 
 /* ── Buttons ── */
 .btn-primary {
-  background: var(--lime-400);
-  color: #0A0C0F;
+  background: var(--accent);
+  color: var(--on-accent);
   font-weight: 700;
   font-size: 15px;
   padding: 12px 24px;
@@ -199,7 +218,7 @@ img, video, svg, canvas {
   transition: background 0.15s, box-shadow 0.15s;
   cursor: pointer;
 }
-.btn-secondary:hover { background: rgba(170, 255, 0, 0.08); box-shadow: var(--shadow-lime-sm); }
+.btn-secondary:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); box-shadow: var(--shadow-lime-sm); }
 
 .btn-ghost {
   background: transparent;
@@ -253,7 +272,7 @@ img, video, svg, canvas {
 .cl-input::placeholder { color: var(--text-tertiary); }
 .cl-input:focus {
   border-color: var(--lime-400);
-  box-shadow: 0 0 0 3px rgba(170, 255, 0, 0.12);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 .cl-input-error { border-color: var(--error); }
 
@@ -283,10 +302,10 @@ img, video, svg, canvas {
 
 .cl-card-accent {
   background: var(--surface-card);
-  border: 1px solid rgba(170, 255, 0, 0.25);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   border-radius: var(--radius-lg);
   padding: 20px 24px;
-  box-shadow: 0 0 20px rgba(170, 255, 0, 0.06);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
 /* ── Progress / Macro Bars ── */
@@ -301,8 +320,8 @@ img, video, svg, canvas {
 
 /* ── Chat Bubbles ── */
 .chat-bubble-user {
-  background: var(--lime-400);
-  color: #0A0C0F;
+  background: var(--accent);
+  color: var(--on-accent);
   border-radius: 18px 18px 4px 18px;
   padding: 12px 16px;
   max-width: 72%;
@@ -399,8 +418,8 @@ img, video, svg, canvas {
 }
 
 @keyframes lime-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(170, 255, 0, 0.4); }
-  50%       { box-shadow: 0 0 0 12px rgba(170, 255, 0, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent); }
+  50%       { box-shadow: 0 0 0 12px transparent; }
 }
 
 @keyframes lime-rotate {

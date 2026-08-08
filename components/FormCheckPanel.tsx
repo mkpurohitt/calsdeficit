@@ -104,7 +104,7 @@ export default function FormCheckPanel({ onResult }: FormCheckPanelProps) {
               borderRadius: "100px",
               fontSize: 13,
               fontWeight: 700,
-              background: "rgba(170, 255, 0, 0.12)",
+              background: "color-mix(in srgb, var(--accent) 12%, transparent)",
               color: scoreColor(result.score),
               fontFamily: "var(--font-mono)",
             }}

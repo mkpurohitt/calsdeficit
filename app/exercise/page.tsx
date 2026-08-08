@@ -348,8 +348,8 @@ export default function ExercisePage() {
           className="cl-card"
           style={{ position: "relative", overflow: "hidden", borderRadius: 20, padding: "26px 28px", marginBottom: 20, display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap" }}
         >
-          <div style={{ position: "absolute", right: -60, top: -60, width: 300, height: 300, background: "radial-gradient(circle, rgba(170, 255, 0, 0.14), transparent 65%)", pointerEvents: "none" }} />
-          <span style={{ position: "relative", flex: "none", width: 62, height: 62, borderRadius: 18, background: "var(--lime-400)", display: "flex", alignItems: "center", justifyContent: "center", color: "#0A0C0F" }}>
+          <div style={{ position: "absolute", right: -60, top: -60, width: 300, height: 300, background: "radial-gradient(circle, color-mix(in srgb, var(--accent) 14%, transparent), transparent 65%)", pointerEvents: "none" }} />
+          <span style={{ position: "relative", flex: "none", width: 62, height: 62, borderRadius: 18, background: "var(--lime-400)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--on-accent)" }}>
             <Video size={30} />
           </span>
           <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
@@ -370,7 +370,7 @@ export default function ExercisePage() {
               gap: 9,
               padding: "14px 26px",
               background: "var(--lime-400)",
-              color: "#0A0C0F",
+              color: "var(--on-accent)",
               fontWeight: 700,
               fontSize: 15,
               border: "none",
@@ -415,12 +415,12 @@ export default function ExercisePage() {
                         background: isActive ? (isToday ? "var(--lime-400)" : "var(--surface-elevated)") : "transparent",
                       }}
                     >
-                      <div style={{ fontSize: 11, fontWeight: 500, color: isActive && isToday ? "#0A0C0F" : "var(--text-tertiary)" }}>{day}</div>
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 18, fontWeight: 700, marginTop: 3, color: isActive && isToday ? "#0A0C0F" : "var(--text-primary)" }}>
+                      <div style={{ fontSize: 11, fontWeight: 500, color: isActive && isToday ? "var(--on-accent)" : "var(--text-tertiary)" }}>{day}</div>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 18, fontWeight: 700, marginTop: 3, color: isActive && isToday ? "var(--on-accent)" : "var(--text-primary)" }}>
                         {date.getDate()}
                       </div>
                       {hasWorkout && (
-                        <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", marginTop: 3, background: isActive && isToday ? "#0A0C0F" : "var(--lime-400)" }} />
+                        <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", marginTop: 3, background: isActive && isToday ? "var(--on-accent)" : "var(--lime-400)" }} />
                       )}
                     </button>
                   );
@@ -521,8 +521,8 @@ export default function ExercisePage() {
                           padding: "12px 8px",
                           borderRadius: 14,
                           textAlign: "center",
-                          background: done ? "rgba(170,255,0,0.08)" : "var(--surface-elevated)",
-                          border: done ? "1.5px solid rgba(170,255,0,0.4)" : "1px solid var(--border-subtle)",
+                          background: done ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "var(--surface-elevated)",
+                          border: done ? "1.5px solid color-mix(in srgb, var(--accent) 40%, transparent)" : "1px solid var(--border-subtle)",
                           cursor: tickable ? "pointer" : "default",
                         }}
                       >
@@ -539,7 +539,7 @@ export default function ExercisePage() {
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
-                            color: "#0A0C0F",
+                            color: "var(--on-accent)",
                           }}
                         >
                           {busy ? <Loader2 size={11} className="animate-spin" style={{ color: "var(--text-tertiary)" }} /> : done ? <Check size={12} /> : null}
@@ -595,7 +595,7 @@ export default function ExercisePage() {
                             border: "1px solid var(--border-subtle)",
                           }}
                         >
-                          <span style={{ position: "absolute", top: 8, right: 8, fontSize: 9.5, fontWeight: 700, padding: "3px 8px", borderRadius: "var(--radius-full)", background: "rgba(170, 255, 0, 0.12)", color: "var(--lime-600)" }}>
+                          <span style={{ position: "absolute", top: 8, right: 8, fontSize: 9.5, fontWeight: 700, padding: "3px 8px", borderRadius: "var(--radius-full)", background: "color-mix(in srgb, var(--accent) 12%, transparent)", color: "var(--lime-600)" }}>
                             DONE
                           </span>
                           {exercise.thumb ? (
@@ -628,7 +628,7 @@ export default function ExercisePage() {
                     />
                     <label
                       title="Attach a workout video"
-                      style={{ flex: "none", width: 30, height: 30, borderRadius: 8, border: "1px solid var(--border-color)", background: quickVideo ? "rgba(170,255,0,0.12)" : "var(--surface-card)", color: quickVideo ? "var(--lime-400)" : "var(--text-tertiary)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                      style={{ flex: "none", width: 30, height: 30, borderRadius: 8, border: "1px solid var(--border-color)", background: quickVideo ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--surface-card)", color: quickVideo ? "var(--lime-400)" : "var(--text-tertiary)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
                     >
                       <Video size={14} />
                       <input
@@ -651,7 +651,7 @@ export default function ExercisePage() {
                       onClick={handleQuickLog}
                       disabled={quickBusy || (!quickText.trim() && !quickVideo)}
                       aria-label="Log workout with AI"
-                      style={{ flex: "none", width: 30, height: 30, borderRadius: 8, border: "none", background: quickSaved ? "rgba(170,255,0,0.15)" : "var(--lime-400)", color: quickSaved ? "var(--lime-400)" : "#0A0C0F", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: quickBusy || (!quickText.trim() && !quickVideo) ? 0.5 : 1 }}
+                      style={{ flex: "none", width: 30, height: 30, borderRadius: 8, border: "none", background: quickSaved ? "color-mix(in srgb, var(--accent) 15%, transparent)" : "var(--lime-400)", color: quickSaved ? "var(--lime-400)" : "var(--on-accent)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: quickBusy || (!quickText.trim() && !quickVideo) ? 0.5 : 1 }}
                     >
                       {quickBusy ? <Loader2 size={14} className="animate-spin" /> : quickSaved ? <Check size={14} /> : <Send size={14} />}
                     </button>
@@ -722,7 +722,7 @@ export default function ExercisePage() {
 
             {/* Muscle Library teaser */}
             <div className="cl-card cl-card-hover" style={{ position: "relative", overflow: "hidden", borderRadius: 18, padding: 22 }}>
-              <div style={{ position: "absolute", right: -40, bottom: -40, width: 200, height: 200, background: "radial-gradient(circle, rgba(170, 255, 0, 0.12), transparent 65%)", pointerEvents: "none" }} />
+              <div style={{ position: "absolute", right: -40, bottom: -40, width: 200, height: 200, background: "radial-gradient(circle, color-mix(in srgb, var(--accent) 12%, transparent), transparent 65%)", pointerEvents: "none" }} />
               <div style={{ position: "relative" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
                   <div className="cl-disp" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 17, color: "var(--text-primary)" }}>
@@ -758,7 +758,7 @@ export default function ExercisePage() {
                     width: "100%",
                     padding: 12,
                     background: "var(--lime-400)",
-                    color: "#0A0C0F",
+                    color: "var(--on-accent)",
                     fontWeight: 700,
                     fontSize: 14,
                     border: "none",

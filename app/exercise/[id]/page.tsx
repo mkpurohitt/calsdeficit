@@ -125,7 +125,7 @@ export default function ExerciseDetailPage() {
                   {exercise.name}
                 </h1>
                 <div className="flex flex-wrap gap-2 mt-4">
-                  <span style={{ fontSize: 12, padding: "5px 10px", borderRadius: "var(--radius-full)", background: "rgba(170, 255, 0, 0.12)", color: "var(--lime-400)", fontWeight: 700, textTransform: "capitalize" }}>
+                  <span style={{ fontSize: 12, padding: "5px 10px", borderRadius: "var(--radius-full)", background: "color-mix(in srgb, var(--accent) 12%, transparent)", color: "var(--lime-400)", fontWeight: 700, textTransform: "capitalize" }}>
                     {exercise.muscle_group}
                   </span>
                   <span style={{ fontSize: 12, padding: "5px 10px", borderRadius: "var(--radius-full)", background: "var(--surface-elevated)", color: "var(--text-secondary)", fontWeight: 700, textTransform: "capitalize" }}>

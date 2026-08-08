@@ -93,7 +93,7 @@ export default function UsagePage() {
               className="cl-card"
               style={{ borderRadius: 18, padding: "26px 24px", marginBottom: 18, position: "relative", overflow: "hidden" }}
             >
-              <div style={{ position: "absolute", right: -50, top: -50, width: 220, height: 220, background: "radial-gradient(circle, rgba(170,255,0,.10), transparent 65%)", pointerEvents: "none" }} />
+              <div style={{ position: "absolute", right: -50, top: -50, width: 220, height: 220, background: "radial-gradient(circle, color-mix(in srgb, var(--accent) 10%, transparent), transparent 65%)", pointerEvents: "none" }} />
               <div style={{ position: "relative" }}>
                 <div className="flex" style={{ alignItems: "baseline", gap: 8, marginBottom: 6 }}>
                   <span className="cl-mono" style={{ fontSize: 44, fontWeight: 700, lineHeight: 1, color: barColor(usedPct) }}>

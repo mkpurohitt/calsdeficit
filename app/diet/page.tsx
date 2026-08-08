@@ -534,7 +534,7 @@ export default function DietPage() {
               top: -60,
               width: 300,
               height: 300,
-              background: "radial-gradient(circle, rgba(170,255,0,.14), transparent 65%)",
+              background: "radial-gradient(circle, color-mix(in srgb, var(--accent) 14%, transparent), transparent 65%)",
               pointerEvents: "none",
             }}
           />
@@ -549,7 +549,7 @@ export default function DietPage() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#0A0C0F",
+              color: "var(--on-accent)",
             }}
           >
             <Camera size={30} />
@@ -572,7 +572,7 @@ export default function DietPage() {
               gap: 9,
               padding: "14px 26px",
               background: "var(--lime-400)",
-              color: "#0A0C0F",
+              color: "var(--on-accent)",
               fontWeight: 700,
               fontSize: 15,
               border: "none",
@@ -614,8 +614,8 @@ export default function DietPage() {
                       opacity: isFuture ? 0.35 : 1,
                     }}
                   >
-                    <div style={{ fontSize: 11, fontWeight: 500, color: isActive ? "#0A0C0F" : "var(--text-tertiary)" }}>{day}</div>
-                    <div className="cl-mono" style={{ fontSize: 16, fontWeight: 700, marginTop: 2, color: isActive ? "#0A0C0F" : "var(--text-primary)" }}>
+                    <div style={{ fontSize: 11, fontWeight: 500, color: isActive ? "var(--on-accent)" : "var(--text-tertiary)" }}>{day}</div>
+                    <div className="cl-mono" style={{ fontSize: 16, fontWeight: 700, marginTop: 2, color: isActive ? "var(--on-accent)" : "var(--text-primary)" }}>
                       {date.getDate()}
                     </div>
                   </button>
@@ -635,7 +635,7 @@ export default function DietPage() {
                   top: -40,
                   width: 280,
                   height: 280,
-                  background: "radial-gradient(circle, rgba(170,255,0,.16), transparent 65%)",
+                  background: "radial-gradient(circle, color-mix(in srgb, var(--accent) 16%, transparent), transparent 65%)",
                   pointerEvents: "none",
                 }}
               />
@@ -896,7 +896,7 @@ export default function DietPage() {
                         justifyContent: "center",
                         cursor: "pointer",
                         border: `1.5px solid ${filled ? "var(--lime-400)" : "var(--border-color)"}`,
-                        background: filled ? "rgba(170,255,0,.14)" : "var(--surface-elevated)",
+                        background: filled ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "var(--surface-elevated)",
                         color: filled ? "var(--lime-400)" : "var(--text-tertiary)",
                         transition: "all 0.2s ease",
                       }}
@@ -1011,7 +1011,7 @@ export default function DietPage() {
                         onClick={() => handleLogUnsavedScan(scanRec)}
                         disabled={scanActionBusy === scanRec.id}
                         title="Add to today's diary"
-                        style={{ flex: "none", padding: "6px 12px", borderRadius: 8, border: "none", background: "var(--lime-400)", color: "#0A0C0F", fontSize: 11.5, fontWeight: 700, cursor: "pointer", opacity: scanActionBusy === scanRec.id ? 0.6 : 1 }}
+                        style={{ flex: "none", padding: "6px 12px", borderRadius: 8, border: "none", background: "var(--lime-400)", color: "var(--on-accent)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", opacity: scanActionBusy === scanRec.id ? 0.6 : 1 }}
                       >
                         {scanActionBusy === scanRec.id ? "…" : "Log"}
                       </button>
@@ -1101,7 +1101,7 @@ export default function DietPage() {
                   background: "linear-gradient(135deg, var(--lime-400), #8BC34A)",
                   display: "flex", alignItems: "center", justifyContent: "center",
                 }}>
-                  <Sparkles size={20} style={{ color: "#0A0C0F" }} />
+                  <Sparkles size={20} style={{ color: "var(--on-accent)" }} />
                 </div>
                 <div>
                   <h3 style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)", fontFamily: "var(--font-display)" }}>

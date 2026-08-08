@@ -93,31 +93,49 @@ interface SupplementEntry {
   instructions: string[];
 }
 
-let supplementPromise: Promise<Map<string, SupplementEntry>> | null = null;
+interface SupplementIndex {
+  /** Exact id match — the original catalogue rows share ids with this dataset. */
+  byId: Map<string, SupplementEntry>;
+  /** Normalized-name match — the only way newer sources (repdb-/wger-/ek- ids)
+   * can inherit the animated frames, since their ids are unrelated. */
+  byName: Map<string, SupplementEntry>;
+}
 
-async function loadSupplement(): Promise<Map<string, SupplementEntry>> {
+/** Loose key so "Barbell Bench Press" and "barbell-bench-press" agree. */
+function nameKey(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+let supplementPromise: Promise<SupplementIndex> | null = null;
+
+async function loadSupplement(): Promise<SupplementIndex> {
   if (!supplementPromise) {
     supplementPromise = fetch(SUPPLEMENT_URL, { next: { revalidate: 86400 } })
       .then(async (res) => {
         if (!res.ok) throw new Error(`Supplement dataset HTTP ${res.status}`);
         const raw = (await res.json()) as {
           id?: string;
+          name?: string;
           images?: string[];
           secondaryMuscles?: string[];
           instructions?: string[];
         }[];
-        const map = new Map<string, SupplementEntry>();
+        const byId = new Map<string, SupplementEntry>();
+        const byName = new Map<string, SupplementEntry>();
         for (const entry of raw) {
-          if (!entry.id) continue;
           const frames = (entry.images || []).map((img) => SUPPLEMENT_IMG_BASE + img);
-          map.set(entry.id, {
+          const record: SupplementEntry = {
             gif_url: frames[0] || null,
             frames,
             secondary_muscles: entry.secondaryMuscles || [],
             instructions: entry.instructions || [],
-          });
+          };
+          if (entry.id) byId.set(entry.id, record);
+          const key = entry.name ? nameKey(entry.name) : "";
+          // First writer wins; the dataset is already deduped by name.
+          if (key && frames.length > 0 && !byName.has(key)) byName.set(key, record);
         }
-        return map;
+        return { byId, byName };
       })
       .catch((error) => {
         supplementPromise = null;
@@ -134,27 +152,32 @@ async function loadSupplement(): Promise<Map<string, SupplementEntry>> {
  */
 async function enrich(records: ExerciseRecord[]): Promise<ExerciseRecord[]> {
   if (records.length === 0) return records;
-  let supplement: Map<string, SupplementEntry> | null = null;
+  let supplement: SupplementIndex | null = null;
   try {
     supplement = await loadSupplement();
   } catch (error) {
     console.error("[exercise-db] supplement enrichment failed:", error);
   }
   return records.map((r) => {
-    // Rows from the newer catalogues (repdb-/wger-/ek- ids) carry their own
-    // media and aren't in the supplement — they only need the https upgrade.
-    const extra = supplement?.get(r.id);
-    const gif = secureMedia(extra?.gif_url || r.gif_url);
-    const frames = (extra?.frames.length ? extra.frames : gif ? [gif] : [])
-      .map(secureMedia)
-      .filter((u): u is string => Boolean(u));
+    // Prefer the id match (original catalogue rows). Rows from the newer
+    // sources (repdb-/wger-/ek- ids) can't match by id, so fall back to the
+    // name: it restores the two-frame animation for moves the supplement
+    // covers, and gives the ~500 wger rows that ship with no media at all
+    // something to show.
+    const extra = supplement?.byId.get(r.id) ?? supplement?.byName.get(nameKey(r.name));
+    // The row's own media wins when it has some — only borrow frames when the
+    // supplement genuinely has more than the single image we already hold.
+    const ownGif = secureMedia(r.gif_url);
+    const supFrames = (extra?.frames ?? []).map(secureMedia).filter((u): u is string => Boolean(u));
+    const useSupplementMedia = supFrames.length > (ownGif ? 1 : 0);
+    const frames = useSupplementMedia ? supFrames : ownGif ? [ownGif] : [];
     return {
       ...r,
-      gif_url: gif,
+      gif_url: frames[0] ?? null,
       frames,
       met_value: r.met_value != null ? Number(r.met_value) : null,
-      instructions: extra?.instructions.length ? extra.instructions : r.instructions,
-      secondary_muscles: extra?.secondary_muscles.length ? extra.secondary_muscles : r.secondary_muscles,
+      instructions: r.instructions?.length ? r.instructions : extra?.instructions ?? [],
+      secondary_muscles: r.secondary_muscles?.length ? r.secondary_muscles : extra?.secondary_muscles ?? [],
     };
   });
 }
@@ -189,9 +212,13 @@ export async function findExercises({ id, query, muscles, limit = 10 }: Exercise
       }
       params.push(limit);
       const rows = await sql<ExerciseRecord>(
+        // Media-first: ~500 catalogue rows (mostly wger) ship without any
+        // image, and a grid of placeholders reads as broken. They stay
+        // searchable, they just don't lead the list.
         `SELECT id, name, muscle_group, equipment, gif_url, body_part, secondary_muscles, instructions, difficulty, met_value
          FROM exercises ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
-         ORDER BY name LIMIT $${params.length}`,
+         ORDER BY (gif_url IS NOT NULL AND gif_url <> '') DESC, name
+         LIMIT $${params.length}`,
         params
       );
       return await enrich(rows);

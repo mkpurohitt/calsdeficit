@@ -154,8 +154,8 @@ function WorkoutLogCard({ workout, onLog }: { workout: WorkoutParse; onLog: () =
           padding: "10px 14px",
           borderRadius: 10,
           border: "none",
-          background: logState === "saved" ? "rgba(170, 255, 0, 0.12)" : "var(--lime-400)",
-          color: logState === "saved" ? "var(--lime-400)" : "#0A0C0F",
+          background: logState === "saved" ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--lime-400)",
+          color: logState === "saved" ? "var(--lime-400)" : "var(--on-accent)",
           fontSize: 13.5,
           fontWeight: 700,
           cursor: logState === "idle" ? "pointer" : "default",
@@ -698,7 +698,7 @@ function Dashboard() {
                                       padding: "6px 10px",
                                       borderRadius: "var(--radius-sm)",
                                       background: "var(--lime-400)",
-                                      color: "#0A0C0F",
+                                      color: "var(--on-accent)",
                                       fontSize: 12,
                                       fontWeight: 700,
                                     }}
@@ -853,7 +853,7 @@ function Dashboard() {
                     borderRadius: 11,
                     border: "none",
                     background: "var(--lime-400)",
-                    color: "#0A0C0F",
+                    color: "var(--on-accent)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -918,7 +918,7 @@ function Dashboard() {
                   top: -30,
                   width: 180,
                   height: 180,
-                  background: "radial-gradient(circle, rgba(170,255,0,.14), transparent 65%)",
+                  background: "radial-gradient(circle, color-mix(in srgb, var(--accent) 14%, transparent), transparent 65%)",
                   pointerEvents: "none",
                 }}
               />

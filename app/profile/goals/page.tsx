@@ -304,7 +304,7 @@ export default function GoalsPage() {
                     fontWeight: 600,
                     cursor: "pointer",
                     background: form.goal === g ? "var(--lime-400)" : "var(--surface-elevated)",
-                    color: form.goal === g ? "#0A0C0F" : "var(--text-secondary)",
+                    color: form.goal === g ? "var(--on-accent)" : "var(--text-secondary)",
                     border: form.goal === g ? "1px solid var(--lime-400)" : "1px solid var(--border-color)",
                   }}
                 >
@@ -330,7 +330,7 @@ export default function GoalsPage() {
                     fontWeight: 700,
                     cursor: "pointer",
                     background: form.workout_days === d ? "var(--lime-400)" : "var(--surface-elevated)",
-                    color: form.workout_days === d ? "#0A0C0F" : "var(--text-secondary)",
+                    color: form.workout_days === d ? "var(--on-accent)" : "var(--text-secondary)",
                     border: form.workout_days === d ? "1px solid var(--lime-400)" : "1px solid var(--border-color)",
                   }}
                 >
@@ -397,7 +397,7 @@ export default function GoalsPage() {
                   }}
                 >
                   <div className="flex items-center" style={{ gap: 8, marginBottom: day.items.length ? 8 : 0 }}>
-                    <span className="cl-mono" style={{ flex: "none", fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 7, background: day.isRest ? "var(--surface-hover)" : "rgba(170,255,0,.12)", color: day.isRest ? "var(--text-tertiary)" : "var(--lime-600)" }}>
+                    <span className="cl-mono" style={{ flex: "none", fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 7, background: day.isRest ? "var(--surface-hover)" : "color-mix(in srgb, var(--accent) 12%, transparent)", color: day.isRest ? "var(--text-tertiary)" : "var(--lime-600)" }}>
                       {day.day.toUpperCase()}
                     </span>
                     <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>

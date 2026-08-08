@@ -176,9 +176,9 @@ export default function ProfilePage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             {/* Avatar card */}
             <div style={{ position: "relative", overflow: "hidden", background: "var(--surface-card)", border: "1px solid var(--border-color)", borderRadius: 18, padding: "30px 24px", boxShadow: "var(--shadow-card)", textAlign: "center" }}>
-              <div style={{ position: "absolute", left: "50%", top: -20, transform: "translateX(-50%)", width: 220, height: 160, background: "radial-gradient(circle,rgba(170,255,0,.16),transparent 65%)", pointerEvents: "none" }} />
+              <div style={{ position: "absolute", left: "50%", top: -20, transform: "translateX(-50%)", width: 220, height: 160, background: "radial-gradient(circle,color-mix(in srgb, var(--accent) 16%, transparent),transparent 65%)", pointerEvents: "none" }} />
               <div style={{ position: "relative" }}>
-                <div className="cl-disp" style={{ width: 88, height: 88, borderRadius: "50%", margin: "0 auto 14px", background: "linear-gradient(135deg,var(--lime-400),var(--lime-600))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36, fontWeight: 700, color: "#0A0C0F" }}>
+                <div className="cl-disp" style={{ width: 88, height: 88, borderRadius: "50%", margin: "0 auto 14px", background: "linear-gradient(135deg,var(--lime-400),var(--lime-600))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36, fontWeight: 700, color: "var(--on-accent)" }}>
                   {userInitial}
                 </div>
                 <div className="cl-disp" style={{ fontSize: 21, fontWeight: 700, color: "var(--text-primary)" }}>{userName}</div>
@@ -191,7 +191,7 @@ export default function ProfilePage() {
             </div>
 
             {/* Plan + usage card (counts live on the Usage page, Claude-style) */}
-            <div style={{ position: "relative", overflow: "hidden", background: "var(--surface-card)", border: "1px solid rgba(170,255,0,.3)", borderRadius: 18, padding: 24, boxShadow: "0 0 24px rgba(170,255,0,.06)" }}>
+            <div style={{ position: "relative", overflow: "hidden", background: "var(--surface-card)", border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)", borderRadius: 18, padding: 24, boxShadow: "0 0 24px color-mix(in srgb, var(--accent) 6%, transparent)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 16 }}>
                 <Award size={20} style={{ color: "var(--lime-400)" }} />
                 <span style={{ fontWeight: 700, fontSize: 16, color: "var(--text-primary)" }}>

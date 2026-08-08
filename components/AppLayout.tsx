@@ -109,7 +109,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   fontSize: 15,
                   textDecoration: "none",
                   color: active ? "var(--lime-400)" : "var(--text-secondary)",
-                  background: active ? "rgba(170,255,0,0.10)" : "transparent",
+                  background: active ? "color-mix(in srgb, var(--accent) 10%, transparent)" : "transparent",
                   boxShadow: active ? "inset 3px 0 0 var(--lime-400)" : "inset 3px 0 0 transparent",
                   transition: "all 0.15s ease",
                 }}
@@ -159,7 +159,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 borderRadius: "50%",
                 background: "linear-gradient(135deg, var(--lime-400), #72B800)",
                 fontWeight: 700,
-                color: "#0A0C0F",
+                color: "var(--on-accent)",
                 fontSize: 14,
               }}
             >

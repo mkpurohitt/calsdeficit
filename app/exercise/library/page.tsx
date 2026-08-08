@@ -163,7 +163,7 @@ export default function MuscleLibraryPage() {
                   fontWeight: 600,
                   cursor: "pointer",
                   background: active ? "var(--lime-400)" : "var(--surface-elevated)",
-                  color: active ? "#0A0C0F" : "var(--text-secondary)",
+                  color: active ? "var(--on-accent)" : "var(--text-secondary)",
                   border: active ? "1px solid var(--lime-400)" : "1px solid var(--border-color)",
                 }}
               >
@@ -242,7 +242,7 @@ export default function MuscleLibraryPage() {
                           fontWeight: 600,
                           padding: "3px 10px",
                           borderRadius: 7,
-                          background: "rgba(170,255,0,.12)",
+                          background: "color-mix(in srgb, var(--accent) 12%, transparent)",
                           color: "var(--lime-600)",
                           textTransform: "capitalize",
                         }}

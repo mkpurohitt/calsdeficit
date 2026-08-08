@@ -248,7 +248,7 @@ export default function SignupPage() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#0A0C0F",
+          color: "var(--on-accent)",
         }}
       >
         {agreed && <Check size={14} strokeWidth={3} />}
@@ -289,7 +289,7 @@ export default function SignupPage() {
           position: "relative",
           overflow: "hidden",
           minWidth: 0,
-          background: "#0A0C0F",
+          background: "var(--on-accent)",
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
@@ -302,7 +302,7 @@ export default function SignupPage() {
             position: "absolute",
             inset: 0,
             background:
-              "radial-gradient(680px 460px at 18% 30%,rgba(170,255,0,.16),transparent 60%),radial-gradient(600px 600px at 90% 90%,rgba(77,158,255,.10),transparent 55%)",
+              "radial-gradient(680px 460px at 18% 30%,color-mix(in srgb, var(--accent) 16%, transparent),transparent 60%),radial-gradient(600px 600px at 90% 90%,rgba(77,158,255,.10),transparent 55%)",
           }}
         />
         {/* faint grid */}
@@ -383,8 +383,8 @@ export default function SignupPage() {
                     width: 42,
                     height: 42,
                     borderRadius: 12,
-                    background: "rgba(170,255,0,.12)",
-                    border: "1px solid rgba(170,255,0,.25)",
+                    background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+                    border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -496,7 +496,7 @@ export default function SignupPage() {
                   justifyContent: "center",
                   gap: 7,
                   background: method === m ? "var(--lime-400)" : "transparent",
-                  color: method === m ? "#0A0C0F" : "var(--text-secondary)",
+                  color: method === m ? "var(--on-accent)" : "var(--text-secondary)",
                   transition: "background .15s, color .15s",
                 }}
               >
@@ -532,8 +532,8 @@ export default function SignupPage() {
                   width: 52,
                   height: 52,
                   borderRadius: 16,
-                  background: "rgba(170,255,0,.12)",
-                  border: "1px solid rgba(170,255,0,.3)",
+                  background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
                   alignItems: "center",
                   justifyContent: "center",
                   color: "var(--lime-600)",

@@ -5,7 +5,7 @@
 import { Flame, Signal } from "lucide-react";
 
 const DIFFICULTY_COLORS: Record<string, { fg: string; bg: string }> = {
-  beginner: { fg: "var(--lime-600)", bg: "rgba(170,255,0,.12)" },
+  beginner: { fg: "var(--lime-600)", bg: "color-mix(in srgb, var(--accent) 12%, transparent)" },
   intermediate: { fg: "var(--warning)", bg: "rgba(255,184,0,.12)" },
   advanced: { fg: "var(--error)", bg: "rgba(255,90,90,.12)" },
 };

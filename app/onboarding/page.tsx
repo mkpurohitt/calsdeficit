@@ -309,8 +309,8 @@ export default function OnboardingPage() {
                 height: 84,
                 margin: "0 auto 26px",
                 borderRadius: 26,
-                background: "rgba(170,255,0,.12)",
-                border: "1px solid rgba(170,255,0,.3)",
+                background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -345,7 +345,7 @@ export default function OnboardingPage() {
                     borderRadius: 18,
                     cursor: "pointer",
                     textAlign: "center",
-                    background: gender === val ? "rgba(170,255,0,.12)" : "var(--surface-card)",
+                    background: gender === val ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--surface-card)",
                     border: gender === val ? "2px solid var(--lime-400)" : "1px solid var(--border-color)",
                   }}
                 >
@@ -462,7 +462,7 @@ export default function OnboardingPage() {
                     borderRadius: 16,
                     cursor: "pointer",
                     textAlign: "left",
-                    background: goal === val ? "rgba(170,255,0,.12)" : "var(--surface-card)",
+                    background: goal === val ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--surface-card)",
                     border: goal === val ? "2px solid var(--lime-400)" : "1px solid var(--border-color)",
                   }}
                 >
@@ -473,7 +473,7 @@ export default function OnboardingPage() {
                       height: 44,
                       borderRadius: 12,
                       background: goal === val ? "var(--lime-400)" : "var(--surface-elevated)",
-                      color: goal === val ? "#0A0C0F" : "var(--text-tertiary)",
+                      color: goal === val ? "var(--on-accent)" : "var(--text-tertiary)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -540,7 +540,7 @@ export default function OnboardingPage() {
                     borderRadius: 14,
                     cursor: "pointer",
                     textAlign: "left",
-                    background: activity === lvl ? "rgba(170,255,0,.12)" : "var(--surface-card)",
+                    background: activity === lvl ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--surface-card)",
                     border: activity === lvl ? "2px solid var(--lime-400)" : "1px solid var(--border-color)",
                   }}
                 >
@@ -569,7 +569,7 @@ export default function OnboardingPage() {
                     borderRadius: 16,
                     cursor: "pointer",
                     textAlign: "center",
-                    background: workoutDays === d ? "rgba(170,255,0,.12)" : "var(--surface-card)",
+                    background: workoutDays === d ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--surface-card)",
                     border: workoutDays === d ? "2px solid var(--lime-400)" : "1px solid var(--border-color)",
                   }}
                 >
@@ -609,7 +609,7 @@ export default function OnboardingPage() {
                   fontSize: 13.5,
                   fontWeight: 600,
                   width: "100%",
-                  background: healthConditions.length === 0 ? "rgba(170,255,0,.12)" : "var(--surface-card)",
+                  background: healthConditions.length === 0 ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--surface-card)",
                   border: healthConditions.length === 0 ? "2px solid var(--lime-400)" : "1px solid var(--border-color)",
                   color: healthConditions.length === 0 ? "var(--lime-400)" : "var(--text-secondary)",
                 }}
@@ -662,7 +662,7 @@ export default function OnboardingPage() {
                     borderRadius: 14,
                     cursor: "pointer",
                     textAlign: "left",
-                    background: dietaryPreference === pref ? "rgba(170,255,0,.12)" : "var(--surface-card)",
+                    background: dietaryPreference === pref ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--surface-card)",
                     border: dietaryPreference === pref ? "2px solid var(--lime-400)" : "1px solid var(--border-color)",
                   }}
                 >
@@ -715,12 +715,12 @@ export default function OnboardingPage() {
                 position: "relative",
                 overflow: "hidden",
                 background: "var(--surface-card)",
-                border: "1px solid rgba(170,255,0,.3)",
+                border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
                 borderRadius: 20,
                 padding: "26px 24px",
                 textAlign: "center",
                 marginBottom: 14,
-                boxShadow: "0 0 24px rgba(170,255,0,.06)",
+                boxShadow: "0 0 24px color-mix(in srgb, var(--accent) 6%, transparent)",
               }}
             >
               <div style={{ fontSize: 13, color: "var(--text-tertiary)", marginBottom: 4 }}>
@@ -940,7 +940,7 @@ function UnitToggle({
             cursor: "pointer",
             border: "none",
             background: value === val ? "var(--lime-400)" : "transparent",
-            color: value === val ? "#0A0C0F" : "var(--text-secondary)",
+            color: value === val ? "var(--on-accent)" : "var(--text-secondary)",
             transition: "all .18s ease",
           }}
         >
@@ -1093,7 +1093,7 @@ function ChipGrid({
               cursor: "pointer",
               fontSize: 13.5,
               fontWeight: 600,
-              background: on ? "rgba(170,255,0,.12)" : "var(--surface-card)",
+              background: on ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--surface-card)",
               border: on ? "2px solid var(--lime-400)" : "1px solid var(--border-color)",
               color: on ? "var(--lime-400)" : "var(--text-secondary)",
             }}
