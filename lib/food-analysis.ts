@@ -2,6 +2,7 @@ import "server-only";
 import { genai, visionModelId } from "./server/genai";
 import { verifyFood } from "./server/food-db";
 import { resolvePortion, scaleMacrosPer100g, type Macros } from "./portion";
+import { judgeDatabaseMatch } from "./server/food-plausibility";
 import {
   foodScanAiSchema,
   foodScanResponseSchema,
@@ -14,6 +15,11 @@ IDENTIFICATION
 - Name the SPECIFIC dish, not a category: "paneer butter masala", not "curry"; "masala dosa", not "pancake".
 - search_name must be the plain generic form used by nutrition databases: lowercase, no brand, no adjectives about cooking vessel or garnish (e.g. "paneer butter masala", "chicken biryani", "rolled oats").
 - If several distinct foods are present, name the dominant one in food_identified and list the rest in the review summary.
+
+SANITY (your numbers are the fallback when the database disagrees, so they must stand on their own)
+- Sense-check energy density before answering: a brewed drink (chai, coffee, juice) is ~20-60 kcal per 100 ml; a curry or dal ~80-150; rice/roti ~110-350 per 100 g cooked; nuts, oils and dry spice blends are 500-900 per 100 g.
+- A glass of sweetened chai is roughly 100-150 kcal, NOT several hundred. If your own number looks extreme for the food, correct it.
+- Macros must reconcile with the calories: protein×4 + carbs×4 + fat×9 should land within ~15% of the calorie figure.
 
 PORTION (critical — macros are worthless without it)
 - nutrition.portion_grams MUST be the total edible weight of the portion in grams. Never 0, never omitted.
@@ -150,31 +156,56 @@ async function finishScan(
 
   const verification = await verifyFood(searchName);
 
-  let macros: Macros;
+  // The model's own read of the portion. Also the sanity reference the database
+  // candidate is judged against below.
+  const aiEstimate: Macros = {
+    calories: Math.round(parsed.nutrition.calories),
+    protein_g: Math.round(parsed.nutrition.protein_g),
+    carbs_g: Math.round(parsed.nutrition.carbs_g),
+    fat_g: Math.round(parsed.nutrition.fat_g),
+    fiber_g: Math.round(parsed.nutrition.fiber_g),
+  };
+
+  let macros = aiEstimate;
   let per100g: Macros | null = null;
+  let usedDatabase = false;
+
   if (verification.verified && verification.match) {
     // Database rows are per 100 g — scale them to the resolved portion.
-    per100g = {
+    const reference: Macros = {
       calories: verification.match.calories,
       protein_g: verification.match.protein_g,
       carbs_g: verification.match.carbs_g,
       fat_g: verification.match.fat_g,
       fiber_g: verification.match.fiber_g,
     };
-    macros = scaleMacrosPer100g(per100g, portion.grams);
-  } else {
-    // The model already reports macros for the portion it was given.
-    macros = {
-      calories: Math.round(parsed.nutrition.calories),
-      protein_g: Math.round(parsed.nutrition.protein_g),
-      carbs_g: Math.round(parsed.nutrition.carbs_g),
-      fat_g: Math.round(parsed.nutrition.fat_g),
-      fiber_g: Math.round(parsed.nutrition.fiber_g),
-    };
+    const scaled = scaleMacrosPer100g(reference, portion.grams);
+
+    // A name search can return a different FORM of the food (the dry "chai
+    // masala" blend for a glass of chai). Only let the row override the model
+    // when it holds up as the same food.
+    const verdict = judgeDatabaseMatch({
+      dbName: verification.match.foodName,
+      per100g: reference,
+      dbScaled: scaled,
+      aiEstimate,
+      queryName: `${parsed.food_identified} ${searchName} ${userText ?? ""}`,
+      portionLabel: portion.label,
+    });
+
+    if (verdict.useDatabase) {
+      macros = scaled;
+      per100g = reference;
+      usedDatabase = true;
+    } else {
+      console.warn(
+        `[food-analysis] rejected DB match "${verification.match.foodName}" for "${searchName}": ${verdict.reason}`
+      );
+    }
   }
 
   return {
-    food_name: toDisplayName(verification.verified && verification.match ? verification.match.foodName : parsed.food_identified),
+    food_name: toDisplayName(usedDatabase && verification.match ? verification.match.foodName : parsed.food_identified),
     portion: portion.label,
     portion_grams: portion.grams,
     portion_source: portion.source,
@@ -188,9 +219,11 @@ async function finishScan(
     rating_out_of_10: Math.round(parsed.structured_review.rating_out_of_10 * 10) / 10,
     improvement_suggestions: parsed.structured_review.improvement_suggestions,
     suggested_ad_keywords: parsed.suggested_ad_keywords,
-    verified: verification.verified,
+    // Only claim "database verified" when the database actually supplied these
+    // numbers — a rejected match must not wear the verified badge.
+    verified: usedDatabase,
     confidence: parsed.confidence_score,
-    source: verification.sourceLabel,
+    source: usedDatabase ? verification.sourceLabel : "Gemini Estimation",
     meal_type: mealType,
   };
 }
