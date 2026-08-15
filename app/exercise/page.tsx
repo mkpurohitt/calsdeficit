@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import AppLayout from "../../components/AppLayout";
+import WeekStrip from "../../components/WeekStrip";
 import FormCheckPanel from "../../components/FormCheckPanel";
 import { useAuth } from "../../lib/AuthContext";
-import { getDateKey, getDateKeyDaysAgo, getDay, getUserGoal, getWorkoutLogs, saveUserGoal, saveWorkoutLog } from "../../lib/user-data";
+import { getDateKey, getDay, getUserGoal, getWorkoutLogs, saveUserGoal, saveWorkoutLog } from "../../lib/user-data";
 import { apiFetch } from "../../lib/api-client";
 import { makeVideoThumb, MAX_VIDEO_BYTES, fileToBase64 } from "../../lib/image-compress";
 import { STEP_GOAL } from "../../lib/config/app";
-import { ArrowRight, BicepsFlexed, Check, ChevronRight, Dumbbell, Footprints, Grip, Loader2, Pencil, Plus, Send, Shield, Sparkles, Target, Upload, Video, Zap } from "lucide-react";
+import { ArrowRight, BicepsFlexed, Check, Dumbbell, Footprints, Grip, Loader2, Pencil, Plus, Send, Shield, Sparkles, Target, Upload, Video, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 interface WorkoutDisplayItem {
@@ -106,8 +107,8 @@ export default function ExercisePage() {
   const [showFormCheck, setShowFormCheck] = useState(false);
 
   const [todayWorkout, setTodayWorkout] = useState<WorkoutDisplayItem[]>([]);
-  const [workoutDaysThisWeek, setWorkoutDaysThisWeek] = useState<number[]>([]);
-  const [selectedDay, setSelectedDay] = useState(new Date().getDay());
+  const [workoutDateKeys, setWorkoutDateKeys] = useState<string[]>([]);
+  const [selectedDateObj, setSelectedDateObj] = useState(() => new Date());
   const [steps, setSteps] = useState(0);
   const [stepGoal, setStepGoal] = useState(STEP_GOAL);
   const [libraryCounts, setLibraryCounts] = useState<LibraryCounts | null>(null);
@@ -125,10 +126,11 @@ export default function ExercisePage() {
 
   // Stable per-mount "today" so effects depending on it don't re-run every render
   const today = useMemo(() => new Date(), []);
-  const selectedDate = new Date(today);
-  selectedDate.setDate(today.getDate() - today.getDay() + selectedDay);
+  const selectedDate = selectedDateObj;
   const selectedDateKey = getDateKey(selectedDate);
-  const isSelectedToday = selectedDay === today.getDay();
+  // The weekly plan is keyed by day-of-week, so derive it from the selection.
+  const selectedDay = selectedDate.getDay();
+  const isSelectedToday = selectedDateKey === getDateKey(today);
   const selectedLogTitle = isSelectedToday
     ? "Today's Log"
     : selectedDate.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
@@ -161,8 +163,14 @@ export default function ExercisePage() {
     const userId = user.uid;
 
     const loadUserData = async () => {
+      // Range covers the week being viewed, so paging back loads its logs.
+      const weekStart = new Date(selectedDate);
+      weekStart.setDate(selectedDate.getDate() - selectedDate.getDay());
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+
       const [logs, day, goal] = await Promise.all([
-        getWorkoutLogs(userId, { from: getDateKeyDaysAgo(7), to: getDateKey() }),
+        getWorkoutLogs(userId, { from: getDateKey(weekStart), to: getDateKey(weekEnd) }),
         getDay(userId, getDateKey()),
         getUserGoal(userId),
       ]);
@@ -176,19 +184,8 @@ export default function ExercisePage() {
         thumb: log.thumb,
       })));
 
-      const weekKeys = Array.from({ length: 7 }).map((_, index) => {
-        const date = new Date(today);
-        date.setDate(today.getDate() - today.getDay() + index);
-        return getDateKey(date);
-      });
-
-      setWorkoutDaysThisWeek([
-        ...new Set(
-          logs
-            .filter((log) => weekKeys.includes(log.date_key))
-            .map((log) => new Date(log.logged_at).getDay())
-        ),
-      ]);
+      // Keyed by date rather than weekday so the dots stay correct on any week.
+      setWorkoutDateKeys([...new Set(logs.map((log) => log.date_key))]);
 
       setSteps(day?.steps || 0);
       setStepGoal(goal?.step_goal || STEP_GOAL);
@@ -196,7 +193,7 @@ export default function ExercisePage() {
     };
 
     loadUserData();
-  }, [user, selectedDateKey, analysisVersion, today]);
+  }, [user, selectedDateKey, selectedDate, analysisVersion, today]);
 
   const handleUploadClick = () => {
     setShowFormCheck(true);
@@ -392,41 +389,11 @@ export default function ExercisePage() {
         <div className="ex-cols2">
           {/* MAIN */}
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            <div className="cl-card" style={{ borderRadius: 16, padding: 10 }}>
-              <div style={{ display: "flex", gap: 8 }}>
-                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, index) => {
-                  const date = new Date(today);
-                  date.setDate(today.getDate() - today.getDay() + index);
-                  const isToday = index === today.getDay();
-                  const isActive = selectedDay === index;
-                  const hasWorkout = workoutDaysThisWeek.includes(index);
-
-                  return (
-                    <button
-                      key={day}
-                      onClick={() => setSelectedDay(index)}
-                      style={{
-                        flex: 1,
-                        textAlign: "center",
-                        padding: "11px 0",
-                        borderRadius: 11,
-                        cursor: "pointer",
-                        border: "none",
-                        background: isActive ? (isToday ? "var(--lime-400)" : "var(--surface-elevated)") : "transparent",
-                      }}
-                    >
-                      <div style={{ fontSize: 11, fontWeight: 500, color: isActive && isToday ? "var(--on-accent)" : "var(--text-tertiary)" }}>{day}</div>
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 18, fontWeight: 700, marginTop: 3, color: isActive && isToday ? "var(--on-accent)" : "var(--text-primary)" }}>
-                        {date.getDate()}
-                      </div>
-                      {hasWorkout && (
-                        <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", marginTop: 3, background: isActive && isToday ? "var(--on-accent)" : "var(--lime-400)" }} />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            <WeekStrip
+              value={selectedDateObj}
+              onChange={setSelectedDateObj}
+              marked={(date) => workoutDateKeys.includes(getDateKey(date))}
+            />
 
             {/* Today's Plan — from the user's AI weekly split */}
             <div className="cl-card" style={{ borderRadius: 18, padding: 22 }}>

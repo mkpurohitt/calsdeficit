@@ -385,22 +385,65 @@ img, video, svg, canvas {
 /* ── Coming Soon Badge ── */
 .coming-soon-badge {
   position: relative;
-  padding: 16px 32px;
-  border-radius: 50px;
-  font-size: 18px;
+  display: inline-block;
+  padding: 15px 34px;
+  border-radius: 999px;
+  font-size: clamp(15px, 1.7vw, 18px);
   font-weight: 800;
-  color: var(--lime-400);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.14em;
+  color: var(--accent-text);
   background: var(--surface-card);
+  isolation: isolate;
 }
+/* Conic sweep behind the pill, masked to a 2px ring so only the border moves. */
 .coming-soon-badge::before {
   content: '';
   position: absolute;
   inset: -2px;
-  border-radius: 52px;
-  background: conic-gradient(var(--lime-400), transparent, var(--lime-400));
-  animation: lime-rotate 2s linear infinite;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--cs-angle),
+    transparent 0deg,
+    var(--accent) 70deg,
+    var(--mint-green) 140deg,
+    var(--accent) 210deg,
+    transparent 300deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: cs-spin 3s linear infinite;
+}
+/* Soft glow that pulses with the sweep. */
+.coming-soon-badge::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
   z-index: -1;
+  background: var(--accent);
+  filter: blur(14px);
+  opacity: 0.18;
+  animation: cs-glow 3s ease-in-out infinite;
+}
+@property --cs-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+@keyframes cs-spin {
+  to { --cs-angle: 360deg; }
+}
+@keyframes cs-glow {
+  0%, 100% { opacity: 0.12; }
+  50%      { opacity: 0.26; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .coming-soon-badge::before,
+  .coming-soon-badge::after { animation: none; }
+  .coming-soon-badge::before { background: var(--accent); }
 }
 
 /* ────────────────────────────────────────────

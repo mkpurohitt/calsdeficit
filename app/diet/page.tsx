@@ -1,10 +1,11 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import AppLayout from "../../components/AppLayout";
+import WeekStrip from "../../components/WeekStrip";
 import { Droplet, Camera, Plus, ChevronDown, ChevronUp, Trash2, X, Upload, Loader2, Check, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../lib/AuthContext";
-import { addFoodLog, deleteFoodLog, deleteScanHistory, getDateKey, getDateKeyDaysAgo, getDay, getFoodLogs, getScanHistory, getUserGoal, saveDay, type ScanHistoryRecord } from "../../lib/user-data";
+import { addFoodLog, deleteFoodLog, getDateKey, getDateKeyDaysAgo, getDay, getFoodLogs, getUserGoal, saveDay } from "../../lib/user-data";
 import { apiFetch } from "../../lib/api-client";
 import { compressImage, makeImageThumb } from "../../lib/image-compress";
 import FoodScanCard from "../../components/FoodScanCard";
@@ -53,9 +54,7 @@ export default function DietPage() {
   const [waterGlasses, setWaterGlasses] = useState(0);
   const [expandedMeal, setExpandedMeal] = useState<string | null>("Breakfast");
   // Which day of the current week is shown in the meal journal (JS getDay()).
-  const [selectedDay, setSelectedDay] = useState(new Date().getDay());
-  const [unsavedScans, setUnsavedScans] = useState<ScanHistoryRecord[]>([]);
-  const [scanActionBusy, setScanActionBusy] = useState<string | null>(null);
+  const [selectedDateObj, setSelectedDateObj] = useState(() => new Date());
 
   // Food logs from database
   const [foodLogs, setFoodLogs] = useState<FoodLogEntry[]>([]);
@@ -103,14 +102,6 @@ export default function DietPage() {
     }
   }, [authLoading, user, loading, isOnboarded, router]);
 
-  // Fetch today's food logs
-  // Selected calendar date within the current week (Sun-first, like Exercise).
-  const selectedDateObj = (() => {
-    const now = new Date();
-    const d = new Date(now);
-    d.setDate(now.getDate() - now.getDay() + selectedDay);
-    return d;
-  })();
   const selectedDateKey = getDateKey(selectedDateObj);
   const isSelectedToday = selectedDateKey === getDateKey();
 
@@ -123,60 +114,6 @@ export default function DietPage() {
       portion: log.portion || '1 serving',
     })));
   }, [user, selectedDateKey]);
-
-  const fetchUnsavedScans = useCallback(async () => {
-    if (!user) return;
-    try {
-      setUnsavedScans(await getScanHistory(user.uid, 10));
-    } catch {
-      /* card just stays empty */
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (user && isOnboarded) fetchUnsavedScans();
-  }, [user, isOnboarded, fetchUnsavedScans]);
-
-  /** Log an unsaved Home-chat scan into today's diary. */
-  const handleLogUnsavedScan = async (scan: ScanHistoryRecord) => {
-    if (!user || !scan.id || scanActionBusy) return;
-    setScanActionBusy(scan.id);
-    try {
-      const hour = new Date().getHours();
-      const slot = hour < 11 ? "Breakfast" : hour < 15 ? "Lunch" : hour < 18 ? "Snacks" : "Dinner";
-      await addFoodLog({
-        user_id: user.uid,
-        food_name: scan.food_name,
-        portion: scan.portion,
-        calories: scan.calories,
-        protein_g: scan.protein_g,
-        carbs_g: scan.carbs_g,
-        fat_g: scan.fat_g,
-        fiber_g: scan.fiber_g,
-        meal_type: slot,
-        ...(scan.photo_thumb ? { photo_thumb: scan.photo_thumb } : {}),
-        date_key: getDateKey(),
-        date: getDateKey(),
-      });
-      await deleteScanHistory(user.uid, scan.id);
-      setUnsavedScans((prev) => prev.filter((sRec) => sRec.id !== scan.id));
-      fetchFoodLogs();
-      fetchWeeklyData();
-    } finally {
-      setScanActionBusy(null);
-    }
-  };
-
-  const handleDismissUnsavedScan = async (scan: ScanHistoryRecord) => {
-    if (!user || !scan.id || scanActionBusy) return;
-    setScanActionBusy(scan.id);
-    try {
-      await deleteScanHistory(user.uid, scan.id);
-      setUnsavedScans((prev) => prev.filter((sRec) => sRec.id !== scan.id));
-    } finally {
-      setScanActionBusy(null);
-    }
-  };
 
   useEffect(() => {
     if (user && isOnboarded) {
@@ -590,38 +527,8 @@ export default function DietPage() {
           {/* ── LEFT: Ring hero + scan bar + meal journal ── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-            {/* Week day strip — view any day's food log */}
-            <div className="cl-card" style={{ borderRadius: 16, padding: 10, display: "flex", gap: 6 }}>
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, i) => {
-                const now = new Date();
-                const date = new Date(now);
-                date.setDate(now.getDate() - now.getDay() + i);
-                const isActive = selectedDay === i;
-                const isFuture = date > now;
-                return (
-                  <button
-                    key={day}
-                    onClick={() => !isFuture && setSelectedDay(i)}
-                    disabled={isFuture}
-                    style={{
-                      flex: 1,
-                      textAlign: "center",
-                      padding: "9px 0",
-                      borderRadius: 11,
-                      cursor: isFuture ? "default" : "pointer",
-                      border: "none",
-                      background: isActive ? "var(--lime-400)" : "transparent",
-                      opacity: isFuture ? 0.35 : 1,
-                    }}
-                  >
-                    <div style={{ fontSize: 11, fontWeight: 500, color: isActive ? "var(--on-accent)" : "var(--text-tertiary)" }}>{day}</div>
-                    <div className="cl-mono" style={{ fontSize: 16, fontWeight: 700, marginTop: 2, color: isActive ? "var(--on-accent)" : "var(--text-primary)" }}>
-                      {date.getDate()}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            {/* Week strip — pages back through past weeks */}
+            <WeekStrip value={selectedDateObj} onChange={setSelectedDateObj} />
 
             {/* Ring hero */}
             <div
@@ -984,50 +891,6 @@ export default function DietPage() {
                 );
               })()}
             </div>
-
-            {/* Unsaved Home-chat scans — compressed history, log or dismiss */}
-            {unsavedScans.length > 0 && (
-              <div className="cl-card" style={{ borderRadius: 18, padding: 20 }}>
-                <div style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)", marginBottom: 4 }}>Scanned, not logged</div>
-                <p style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 12 }}>
-                  Foods you scanned in Home chat but didn&apos;t save.
-                </p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {unsavedScans.map((scanRec) => (
-                    <div key={scanRec.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", background: "var(--surface-elevated)", borderRadius: 11 }}>
-                      {scanRec.photo_thumb ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={scanRec.photo_thumb} alt="" style={{ flex: "none", width: 32, height: 32, borderRadius: 8, objectFit: "cover" }} />
-                      ) : (
-                        <span style={{ flex: "none", width: 32, height: 32, borderRadius: 8, background: "var(--surface-card)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--lime-600)" }}>
-                          <Camera size={14} />
-                        </span>
-                      )}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{scanRec.food_name}</div>
-                        <div className="cl-mono" style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{scanRec.calories} kcal</div>
-                      </div>
-                      <button
-                        onClick={() => handleLogUnsavedScan(scanRec)}
-                        disabled={scanActionBusy === scanRec.id}
-                        title="Add to today's diary"
-                        style={{ flex: "none", padding: "6px 12px", borderRadius: 8, border: "none", background: "var(--lime-400)", color: "var(--on-accent)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", opacity: scanActionBusy === scanRec.id ? 0.6 : 1 }}
-                      >
-                        {scanActionBusy === scanRec.id ? "…" : "Log"}
-                      </button>
-                      <button
-                        onClick={() => handleDismissUnsavedScan(scanRec)}
-                        title="Dismiss"
-                        aria-label="Dismiss scan"
-                        style={{ flex: "none", width: 22, height: 22, border: "none", background: "none", color: "var(--text-tertiary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Streak */}
             <div

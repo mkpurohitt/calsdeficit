@@ -26,7 +26,7 @@ export default function ShopPage() {
     <AppLayout>
       <div
         style={{
-          minHeight: "calc(100vh - 110px)",
+          minHeight: "100%",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -34,7 +34,7 @@ export default function ShopPage() {
           textAlign: "center",
           position: "relative",
           overflow: "hidden",
-          padding: "48px 24px",
+          padding: "clamp(16px, 4vh, 40px) 20px",
           background: "var(--bg-app)",
         }}
       >
@@ -44,7 +44,7 @@ export default function ShopPage() {
           style={{
             position: "absolute",
             left: "50%",
-            top: "30%",
+            top: "26%",
             transform: "translate(-50%,-50%)",
             width: 520,
             height: 520,
@@ -54,40 +54,23 @@ export default function ShopPage() {
         />
 
         <div style={{ position: "relative", maxWidth: 680, width: "100%" }}>
-          {/* Brand mark + wordmark */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 11, marginBottom: 22 }}>
-            <svg width="32" height="32" viewBox="0 0 100 100" aria-hidden>
-              <mask id="lg-shop">
-                <rect width="100" height="100" fill="black" />
-                <circle cx="50" cy="50" r="42" fill="white" />
-                <circle cx="77" cy="23" r="27" fill="black" />
-              </mask>
-              <circle cx="50" cy="50" r="42" fill="var(--logo-disc)" mask="url(#lg-shop)" />
-              <circle cx="77" cy="23" r="10.5" fill="var(--logo-dot)" />
-            </svg>
-            <span className="brand-wordmark" style={{ fontSize: 26 }}>
-              <span style={{ color: "var(--text-primary)" }}>calo</span>
-              <span style={{ color: "var(--lime-400)" }}>lean</span>
-            </span>
-          </div>
-
           {/* Headline */}
-          <h1 className="cl-disp" style={{ fontSize: 44, fontWeight: 700, margin: "0 0 14px", color: "var(--text-primary)", lineHeight: 1.05 }}>
+          <h1 className="cl-disp" style={{ fontSize: "clamp(30px, 5.4vw, 44px)", fontWeight: 700, margin: "0 0 12px", color: "var(--text-primary)", lineHeight: 1.05 }}>
             Elevate Your Performance
           </h1>
-          <p style={{ fontSize: 17, color: "var(--text-secondary)", margin: "0 auto 28px", maxWidth: 460 }}>
+          <p style={{ fontSize: "clamp(14px, 1.6vw, 17px)", color: "var(--text-secondary)", margin: "0 auto 24px", maxWidth: 460 }}>
             Premium nutrition products, engineered for athletes. Built clean, priced fair.
           </p>
 
           {/* Animated COMING SOON badge */}
-          <div style={{ marginBottom: 40 }}>
+          <div style={{ marginBottom: "clamp(22px, 4vh, 36px)" }}>
             <span className="coming-soon-badge cl-mono animate-float-in" style={{ display: "inline-block", animationDelay: "0.2s" }}>
               COMING SOON
             </span>
           </div>
 
           {/* Feature grid */}
-          <div className="shop-feature-grid" style={{ marginBottom: 36 }}>
+          <div className="shop-feature-grid" style={{ marginBottom: "clamp(20px, 3.5vh, 32px)" }}>
             {features.map((feature, i) => (
               <div
                 key={feature.label}
@@ -96,7 +79,7 @@ export default function ShopPage() {
                   background: "var(--surface-card)",
                   border: "1px solid var(--border-color)",
                   borderRadius: 15,
-                  padding: "20px 12px",
+                  padding: "clamp(14px, 2.4vh, 20px) 12px",
                   boxShadow: "var(--shadow-card)",
                   animationDelay: `${0.3 + i * 0.1}s`,
                 }}
@@ -128,7 +111,7 @@ export default function ShopPage() {
               background: "var(--surface-card)",
               border: "1px solid var(--border-color)",
               borderRadius: 18,
-              padding: 24,
+              padding: "clamp(18px, 3vh, 24px)",
               boxShadow: "var(--shadow-card)",
               maxWidth: 480,
               margin: "0 auto",

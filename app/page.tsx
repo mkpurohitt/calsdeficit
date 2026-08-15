@@ -65,9 +65,20 @@ interface ExerciseResult {
   gif_url?: string | null;
 }
 
-const INITIAL_MESSAGES: Message[] = [
-  { role: "ai", text: "Hey! Upload a food photo to scan nutrients, or a workout video for form analysis. 📷🏋️" }
-];
+/** A fresh chat starts empty — the welcome hero stands in for a greeting
+ *  bubble, the way Claude and ChatGPT open. */
+const INITIAL_MESSAGES: Message[] = [];
+
+/** Time-of-day greeting. Fixed wording per slot, so it never reads as random. */
+function greetingFor(date: Date, firstName: string): { title: string; sub: string } {
+  const hour = date.getHours();
+  const who = firstName ? `, ${firstName}` : "";
+  if (hour < 5) return { title: `Still up${who}?`, sub: "Late-night fuel questions are fair game — ask away." };
+  if (hour < 12) return { title: `Good morning${who}`, sub: "What are we fuelling today?" };
+  if (hour < 17) return { title: `Good afternoon${who}`, sub: "Scan a meal or ask me anything about your training." };
+  if (hour < 21) return { title: `Good evening${who}`, sub: "How did today go? Log a meal or a workout." };
+  return { title: `Winding down${who}?`, sub: "Let's close out the day — log what you ate or trained." };
+}
 
 /** Meal slot inferred from the current time of day. */
 function mealTypeByTime(): string {
@@ -183,7 +194,11 @@ function WorkoutLogCard({ workout, onLog }: { workout: WorkoutParse; onLog: () =
 }
 
 function Dashboard() {
-  const { user, loading } = useAuth() as { user: { uid?: string } | null; loading: boolean };
+  const { user, loading } = useAuth() as {
+    user: ({ uid?: string; displayName?: string | null } & Record<string, unknown>) | null;
+    loading: boolean;
+  };
+  const authUser = user;
   const router = useRouter();
   const searchParams = useSearchParams();
   const convParam = searchParams.get("c");
@@ -208,6 +223,15 @@ function Dashboard() {
   const loadedConvRef = useRef<string | null>(null);
 
   const [stats, setStats] = useState<DailyStats | null>(null);
+  // Resolved on the client: the server has no clock for the user's timezone.
+  const [greeting, setGreeting] = useState<{ title: string; sub: string } | null>(null);
+  useEffect(() => {
+    const name = (authUser?.displayName || "").trim().split(" ")[0] || "";
+    setGreeting(greetingFor(new Date(), name));
+  }, [authUser]);
+
+  /** No user turns yet — show the welcome hero instead of a message list. */
+  const isEmptyChat = !messages.some((m) => m.role === "user");
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -542,7 +566,7 @@ function Dashboard() {
 
           {/* ════ Chat column (v2: transparent, no card chrome) ════ */}
           <div
-            className="cl-chat-card"
+            className={`cl-chat-card${isEmptyChat ? " cl-chat-empty" : ""}`}
             style={{
               display: "flex",
               flexDirection: "column",
@@ -551,9 +575,24 @@ function Dashboard() {
               position: "relative",
             }}
           >
+            {/* Welcome hero — replaces the message list until the first question */}
+            {isEmptyChat ? (
+              <div className="cl-hero">
+                <h1
+                  className="cl-disp"
+                  style={{ fontSize: "clamp(26px, 3.4vw, 40px)", fontWeight: 700, margin: 0, color: "var(--text-primary)", lineHeight: 1.1 }}
+                >
+                  {greeting?.title ?? "Welcome back"}
+                </h1>
+                <p style={{ fontSize: "clamp(14px, 1.5vw, 16px)", color: "var(--text-secondary)", margin: "10px 0 0" }}>
+                  {greeting?.sub ?? "Scan a meal or ask me anything about your training."}
+                </p>
+              </div>
+            ) : null}
+
             {/* Messages */}
             <div
-              className="flex-1 overflow-y-auto"
+              className="cl-msgs flex-1 overflow-y-auto"
               style={{ padding: "8px 4px 24px", display: "flex", flexDirection: "column", gap: 16 }}
             >
               {/* Bottom-anchor spacer: pushes short conversations to the bottom
@@ -881,6 +920,17 @@ function Dashboard() {
                 </div>
               )}
 
+              {/* Quick starts — only while the chat is empty */}
+              {isEmptyChat && (
+                <div className="cl-quickstarts">
+                  {suggestions.map((sg) => (
+                    <button key={sg.t} onClick={sg.go} className="cl-quickstart" type="button">
+                      {sg.t}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* File error (e.g. oversized video) */}
               {fileError && (
                 <div className="flex items-center gap-2 mt-2" style={{ fontSize: 12, color: "var(--error)" }}>
@@ -965,40 +1015,6 @@ function Dashboard() {
               </div>
             </div>
 
-            {/* Try asking */}
-            <div
-              style={{
-                background: "var(--surface-card)",
-                border: "1px solid var(--border-color)",
-                borderRadius: 18,
-                padding: 22,
-                boxShadow: "var(--shadow-card)",
-              }}
-            >
-              <div className="cl-disp" style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)", marginBottom: 14 }}>
-                Try asking
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-                {suggestions.map((sg) => (
-                  <button
-                    key={sg.t}
-                    onClick={sg.go}
-                    className="cl-card-hover"
-                    style={{
-                      textAlign: "left",
-                      padding: "13px 15px",
-                      background: "var(--surface-elevated)",
-                      border: "1px solid var(--border-subtle)",
-                      borderRadius: 12,
-                      cursor: "pointer",
-                    }}
-                  >
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{sg.t}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>{sg.s}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
           </aside>
         </div>
       </div>
@@ -1016,19 +1032,70 @@ function Dashboard() {
         .cl-attach-item:hover {
           background: var(--surface-elevated);
         }
+        /* Empty chat: hero + composer sit together in the middle of the column,
+           the way Claude opens. Once a question is asked the list takes over and
+           the composer returns to the bottom. */
+        .cl-chat-empty {
+          justify-content: center;
+        }
+        .cl-chat-empty .cl-msgs {
+          flex: 0 0 auto;
+          overflow: visible;
+          padding-bottom: 0 !important;
+        }
+        .cl-hero {
+          text-align: center;
+          padding: 0 12px 18px;
+        }
+        .cl-quickstarts {
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: center;
+          gap: 8px;
+          margin-top: 14px;
+        }
+        .cl-quickstart {
+          padding: 8px 15px;
+          border-radius: 999px;
+          border: 1px solid var(--border-color);
+          background: var(--surface-card);
+          color: var(--text-secondary);
+          font-size: 13px;
+          font-weight: 500;
+          font-family: inherit;
+          cursor: pointer;
+          transition: background .12s ease, color .12s ease, border-color .12s ease;
+        }
+        .cl-quickstart:hover {
+          background: var(--surface-elevated);
+          color: var(--text-primary);
+          border-color: var(--accent);
+        }
+
         @media (max-width: 860px) {
           .cl-home {
-            padding: 12px 12px 0 !important;
+            padding: 10px 12px 0 !important;
           }
           .cl-home-grid {
             grid-template-columns: 1fr;
           }
+          /* Today's numbers live on the Diet tab — the phone home screen stays
+             a clean chat surface instead of a wall of stats. */
           .cl-rail {
-            order: -1;
+            display: none !important;
           }
           .cl-chat-card {
             /* viewport minus mobile top bar (56) + bottom nav (66) + gaps */
-            height: calc(100vh - 148px) !important;
+            height: calc(100dvh - 140px) !important;
+          }
+          /* On a phone the composer belongs at the bottom, under the thumb —
+             and the hero rides just above it rather than stranding a gap. */
+          .cl-chat-empty {
+            justify-content: flex-end;
+          }
+          .cl-hero {
+            padding-bottom: 14px;
+            text-align: left;
           }
         }
       `}</style>
