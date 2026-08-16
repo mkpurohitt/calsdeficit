@@ -562,7 +562,7 @@ function Dashboard() {
         className="cl-home"
         style={{ maxWidth: 1380, margin: "0 auto", padding: "20px 38px 14px" }}
       >
-        <div className="cl-home-grid">
+        <div className={`cl-home-grid${isEmptyChat ? " cl-home-grid-empty" : ""}`}>
 
           {/* ════ Chat column (v2: transparent, no card chrome) ════ */}
           <div
@@ -1043,20 +1043,24 @@ function Dashboard() {
            left-of-centre on the page. Nudge the empty state toward true page
            centre and hold the composer at a comfortable reading width. */
         @media (min-width: 861px) {
-          /* Padding on the flex container shifts the hero and the composer by
-             the same amount, so they stay aligned with each other. */
-          .cl-chat-empty {
-            padding-left: clamp(0px, 8vw, 130px);
+          /* An empty chat spans the full content width so the hero lands on the
+             true centre of the page area rather than the centre of the column
+             left over beside the stats rail. The rail floats into the corner it
+             would otherwise occupy — that space is empty anyway. */
+          .cl-home-grid-empty {
+            grid-template-columns: minmax(0, 1fr);
+            position: relative;
+          }
+          .cl-home-grid-empty .cl-rail {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 330px;
           }
           .cl-chat-empty .cl-hero,
           .cl-chat-empty .cl-composer {
-            max-width: 620px;
+            max-width: 640px;
             margin-inline: auto;
-          }
-          /* The chip row needs a touch more room than the composer to stay on
-             one line; let it bleed past the composer's width rather than wrap. */
-          .cl-chat-empty .cl-quickstarts {
-            margin-inline: -34px;
           }
         }
         .cl-chat-empty .cl-msgs {
@@ -1110,13 +1114,16 @@ function Dashboard() {
             /* viewport minus mobile top bar (56) + bottom nav (66) + gaps */
             height: calc(100dvh - 140px) !important;
           }
-          /* On a phone the composer belongs at the bottom, under the thumb —
-             and the hero rides just above it rather than stranding a gap. */
+          /* On a phone the greeting reads at the top and the composer stays at
+             the bottom under the thumb. */
           .cl-chat-empty {
-            justify-content: flex-end;
+            justify-content: flex-start;
+          }
+          .cl-chat-empty .cl-composer {
+            margin-top: auto;
           }
           .cl-hero {
-            padding-bottom: 14px;
+            padding: 6px 2px 14px;
             text-align: left;
           }
           /* Chips cost a row the phone can't spare — the attach menu and the

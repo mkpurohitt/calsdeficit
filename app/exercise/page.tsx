@@ -395,6 +395,154 @@ export default function ExercisePage() {
               marked={(date) => workoutDateKeys.includes(getDateKey(date))}
             />
 
+            <div className="cl-card" style={{ borderRadius: 18, padding: 22 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <div style={{ fontWeight: 600, fontSize: 16, color: "var(--text-primary)" }}>{selectedLogTitle}</div>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--lime-600)" }}>
+                  {todayWorkout.length} {todayWorkout.length === 1 ? "exercise" : "exercises"}
+                </span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {todayWorkout.length === 0 && (
+                  <p style={{ fontSize: 13, color: "var(--text-tertiary)", textAlign: "center", padding: 20 }}>
+                    No exercises logged for this day. Add an exercise from the Muscle Library to log sets.
+                  </p>
+                )}
+                {todayWorkout.length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    {todayWorkout.map((exercise, index) => {
+                      const LogIcon = exerciseIconFor(exercise.name);
+                      return (
+                        <div
+                          key={`${exercise.name}-${index}`}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 12,
+                            padding: "11px 14px",
+                            background: "var(--surface-elevated)",
+                            borderRadius: 11,
+                          }}
+                        >
+                          {/* Muscle-group accent, mirroring the Diet journal rows */}
+                          <span style={{ flex: "none", width: 4, height: 34, borderRadius: 99, background: "var(--accent)" }} />
+                          {exercise.thumb ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={exercise.thumb} alt="" style={{ flex: "none", width: 36, height: 36, borderRadius: 9, objectFit: "cover" }} />
+                          ) : (
+                            <span
+                              style={{
+                                flex: "none",
+                                width: 36,
+                                height: 36,
+                                borderRadius: 9,
+                                background: "var(--surface-card)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                color: "var(--lime-600)",
+                              }}
+                            >
+                              <LogIcon size={18} />
+                            </span>
+                          )}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", textTransform: "capitalize", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {exercise.name}
+                            </div>
+                            <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 1, textTransform: "capitalize" }}>
+                              {[exercise.sets, exercise.weight !== "0lbs" ? exercise.weight : "", exercise.muscle].filter(Boolean).join(" · ")}
+                            </div>
+                          </div>
+                          <span
+                            className="cl-mono"
+                            style={{
+                              flex: "none",
+                              fontSize: 9.5,
+                              fontWeight: 700,
+                              padding: "3px 9px",
+                              borderRadius: "var(--radius-full)",
+                              background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+                              color: "var(--lime-600)",
+                            }}
+                          >
+                            DONE
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* AI quick-log: type it or attach a short video */}
+                <div style={{ padding: "12px 13px", borderRadius: 12, background: "var(--surface-elevated)", border: "1px solid var(--border-subtle)" }}>
+                  <div className="flex items-center" style={{ gap: 8 }}>
+                    <input
+                      value={quickText}
+                      onChange={(e) => setQuickText(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleQuickLog()}
+                      placeholder='Log with AI — e.g. "bench press 4x8 60kg"'
+                      style={{ flex: 1, minWidth: 0, background: "none", border: "none", outline: "none", color: "var(--text-primary)", fontSize: 13.5, fontFamily: "inherit" }}
+                    />
+                    <label
+                      title="Attach a workout video"
+                      style={{ flex: "none", width: 30, height: 30, borderRadius: 8, border: "1px solid var(--border-color)", background: quickVideo ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--surface-card)", color: quickVideo ? "var(--lime-400)" : "var(--text-tertiary)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                    >
+                      <Video size={14} />
+                      <input
+                        type="file"
+                        accept="video/*"
+                        style={{ display: "none" }}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0] || null;
+                          e.target.value = "";
+                          if (f && f.size > MAX_VIDEO_BYTES) {
+                            setQuickError("Video too large — please keep it under 15 MB.");
+                            return;
+                          }
+                          setQuickError(null);
+                          setQuickVideo(f);
+                        }}
+                      />
+                    </label>
+                    <button
+                      onClick={handleQuickLog}
+                      disabled={quickBusy || (!quickText.trim() && !quickVideo)}
+                      aria-label="Log workout with AI"
+                      style={{ flex: "none", width: 30, height: 30, borderRadius: 8, border: "none", background: quickSaved ? "color-mix(in srgb, var(--accent) 15%, transparent)" : "var(--lime-400)", color: quickSaved ? "var(--lime-400)" : "var(--on-accent)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: quickBusy || (!quickText.trim() && !quickVideo) ? 0.5 : 1 }}
+                    >
+                      {quickBusy ? <Loader2 size={14} className="animate-spin" /> : quickSaved ? <Check size={14} /> : <Send size={14} />}
+                    </button>
+                  </div>
+                  {quickVideo && (
+                    <div style={{ fontSize: 11.5, color: "var(--lime-600)", marginTop: 6 }}>
+                      🎥 {quickVideo.name} attached
+                    </div>
+                  )}
+                  {quickError && (
+                    <div style={{ fontSize: 11.5, color: "var(--error)", marginTop: 6 }}>{quickError}</div>
+                  )}
+                </div>
+                <Link
+                  href="/exercise/library"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    padding: 12,
+                    border: "1.5px dashed var(--border-color)",
+                    borderRadius: 12,
+                    color: "var(--lime-600)",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  <Plus size={16} /> Add Exercise
+                </Link>
+              </div>
+            </div>
             {/* Today's Plan — from the user's AI weekly split */}
             <div className="cl-card" style={{ borderRadius: 18, padding: 22 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: dayPlan ? 14 : 6, flexWrap: "wrap" }}>
@@ -527,131 +675,6 @@ export default function ExercisePage() {
               )}
             </div>
 
-            <div className="cl-card" style={{ borderRadius: 18, padding: 22 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <div style={{ fontWeight: 600, fontSize: 16, color: "var(--text-primary)" }}>{selectedLogTitle}</div>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--lime-600)" }}>
-                  {todayWorkout.length} {todayWorkout.length === 1 ? "exercise" : "exercises"}
-                </span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {todayWorkout.length === 0 && (
-                  <p style={{ fontSize: 13, color: "var(--text-tertiary)", textAlign: "center", padding: 20 }}>
-                    No exercises logged for this day. Add an exercise from the Muscle Library to log sets.
-                  </p>
-                )}
-                {todayWorkout.length > 0 && (
-                  <div className="plan-tiles" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-                    {todayWorkout.map((exercise, index) => {
-                      const LogIcon = exerciseIconFor(exercise.name);
-                      return (
-                        <div
-                          key={`${exercise.name}-${index}`}
-                          style={{
-                            position: "relative",
-                            aspectRatio: "1 / 0.92",
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            gap: 6,
-                            padding: "12px 8px",
-                            borderRadius: 14,
-                            textAlign: "center",
-                            background: "var(--surface-elevated)",
-                            border: "1px solid var(--border-subtle)",
-                          }}
-                        >
-                          <span style={{ position: "absolute", top: 8, right: 8, fontSize: 9.5, fontWeight: 700, padding: "3px 8px", borderRadius: "var(--radius-full)", background: "color-mix(in srgb, var(--accent) 12%, transparent)", color: "var(--lime-600)" }}>
-                            DONE
-                          </span>
-                          {exercise.thumb ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={exercise.thumb} alt="" style={{ width: 34, height: 34, borderRadius: 9, objectFit: "cover" }} />
-                          ) : (
-                            <LogIcon size={22} style={{ color: "var(--lime-600)" }} />
-                          )}
-                          <span style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.3, color: "var(--text-primary)", textTransform: "capitalize", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-                            {exercise.name}
-                          </span>
-                          <span className="cl-mono" style={{ fontSize: 10.5, color: "var(--text-tertiary)", textTransform: "capitalize" }}>
-                            {[exercise.sets, exercise.weight !== "0lbs" ? exercise.weight : ""].filter(Boolean).join(" · ")}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* AI quick-log: type it or attach a short video */}
-                <div style={{ padding: "12px 13px", borderRadius: 12, background: "var(--surface-elevated)", border: "1px solid var(--border-subtle)" }}>
-                  <div className="flex items-center" style={{ gap: 8 }}>
-                    <input
-                      value={quickText}
-                      onChange={(e) => setQuickText(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleQuickLog()}
-                      placeholder='Log with AI — e.g. "bench press 4x8 60kg"'
-                      style={{ flex: 1, minWidth: 0, background: "none", border: "none", outline: "none", color: "var(--text-primary)", fontSize: 13.5, fontFamily: "inherit" }}
-                    />
-                    <label
-                      title="Attach a workout video"
-                      style={{ flex: "none", width: 30, height: 30, borderRadius: 8, border: "1px solid var(--border-color)", background: quickVideo ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--surface-card)", color: quickVideo ? "var(--lime-400)" : "var(--text-tertiary)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
-                    >
-                      <Video size={14} />
-                      <input
-                        type="file"
-                        accept="video/*"
-                        style={{ display: "none" }}
-                        onChange={(e) => {
-                          const f = e.target.files?.[0] || null;
-                          e.target.value = "";
-                          if (f && f.size > MAX_VIDEO_BYTES) {
-                            setQuickError("Video too large — please keep it under 15 MB.");
-                            return;
-                          }
-                          setQuickError(null);
-                          setQuickVideo(f);
-                        }}
-                      />
-                    </label>
-                    <button
-                      onClick={handleQuickLog}
-                      disabled={quickBusy || (!quickText.trim() && !quickVideo)}
-                      aria-label="Log workout with AI"
-                      style={{ flex: "none", width: 30, height: 30, borderRadius: 8, border: "none", background: quickSaved ? "color-mix(in srgb, var(--accent) 15%, transparent)" : "var(--lime-400)", color: quickSaved ? "var(--lime-400)" : "var(--on-accent)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: quickBusy || (!quickText.trim() && !quickVideo) ? 0.5 : 1 }}
-                    >
-                      {quickBusy ? <Loader2 size={14} className="animate-spin" /> : quickSaved ? <Check size={14} /> : <Send size={14} />}
-                    </button>
-                  </div>
-                  {quickVideo && (
-                    <div style={{ fontSize: 11.5, color: "var(--lime-600)", marginTop: 6 }}>
-                      🎥 {quickVideo.name} attached
-                    </div>
-                  )}
-                  {quickError && (
-                    <div style={{ fontSize: 11.5, color: "var(--error)", marginTop: 6 }}>{quickError}</div>
-                  )}
-                </div>
-                <Link
-                  href="/exercise/library"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    padding: 12,
-                    border: "1.5px dashed var(--border-color)",
-                    borderRadius: 12,
-                    color: "var(--lime-600)",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  <Plus size={16} /> Add Exercise
-                </Link>
-              </div>
-            </div>
           </div>
 
           {/* RIGHT RAIL */}
