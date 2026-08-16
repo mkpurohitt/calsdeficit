@@ -774,7 +774,7 @@ function Dashboard() {
             </div>
 
             {/* Composer */}
-            <div style={{ padding: "16px 4px 0" }}>
+            <div className="cl-composer" style={{ padding: "16px 4px 0" }}>
               {/* Input row */}
               <div
                 className="flex items-center"
@@ -868,7 +868,7 @@ function Dashboard() {
                   placeholder={
                     file
                       ? `Attached: ${file.name}`
-                      : "Ask anything about your nutrition or training…"
+                      : "Ask anything about your nutrition…"
                   }
                   style={{
                     flex: 1,
@@ -879,6 +879,7 @@ function Dashboard() {
                     fontSize: 15,
                     fontFamily: "inherit",
                     minWidth: 0,
+                    textOverflow: "ellipsis",
                   }}
                 />
 
@@ -1038,6 +1039,26 @@ function Dashboard() {
         .cl-chat-empty {
           justify-content: center;
         }
+        /* The stats rail sits to the right, so a column-centred hero reads as
+           left-of-centre on the page. Nudge the empty state toward true page
+           centre and hold the composer at a comfortable reading width. */
+        @media (min-width: 861px) {
+          /* Padding on the flex container shifts the hero and the composer by
+             the same amount, so they stay aligned with each other. */
+          .cl-chat-empty {
+            padding-left: clamp(0px, 8vw, 130px);
+          }
+          .cl-chat-empty .cl-hero,
+          .cl-chat-empty .cl-composer {
+            max-width: 620px;
+            margin-inline: auto;
+          }
+          /* The chip row needs a touch more room than the composer to stay on
+             one line; let it bleed past the composer's width rather than wrap. */
+          .cl-chat-empty .cl-quickstarts {
+            margin-inline: -34px;
+          }
+        }
         .cl-chat-empty .cl-msgs {
           flex: 0 0 auto;
           overflow: visible;
@@ -1051,16 +1072,17 @@ function Dashboard() {
           display: flex;
           flex-wrap: wrap;
           justify-content: center;
-          gap: 8px;
+          gap: 7px;
           margin-top: 14px;
         }
         .cl-quickstart {
-          padding: 8px 15px;
+          padding: 7px 12px;
           border-radius: 999px;
           border: 1px solid var(--border-color);
           background: var(--surface-card);
           color: var(--text-secondary);
-          font-size: 13px;
+          font-size: 12.5px;
+          white-space: nowrap;
           font-weight: 500;
           font-family: inherit;
           cursor: pointer;
@@ -1096,6 +1118,11 @@ function Dashboard() {
           .cl-hero {
             padding-bottom: 14px;
             text-align: left;
+          }
+          /* Chips cost a row the phone can't spare — the attach menu and the
+             composer already cover these actions. */
+          .cl-quickstarts {
+            display: none;
           }
         }
       `}</style>
