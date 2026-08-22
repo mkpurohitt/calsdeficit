@@ -31,6 +31,12 @@ export default function ChatHistory({ onNavigate }: { onNavigate?: () => void })
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [draftTitle, setDraftTitle] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
+  // Ref to the open row menu. React delegates events to the root, but this
+  // effect attaches a native listener to document — so `stopPropagation` on
+  // the menu's onMouseDown fires AFTER the native handler and the menu closes
+  // before the click on Delete/Rename/Pin can register. Guarding on the ref
+  // dodges the ordering entirely.
+  const menuRef = React.useRef<HTMLDivElement>(null);
 
   const refresh = React.useCallback(() => {
     if (!user?.uid) {
@@ -68,7 +74,11 @@ export default function ChatHistory({ onNavigate }: { onNavigate?: () => void })
   // Close the row menu on any outside interaction.
   React.useEffect(() => {
     if (!menuFor) return;
-    const close = () => setMenuFor(null);
+    const close = (event: MouseEvent | TouchEvent) => {
+      // Clicks inside the menu itself are handled by React and must not close.
+      if (menuRef.current?.contains(event.target as Node)) return;
+      setMenuFor(null);
+    };
     document.addEventListener("mousedown", close);
     document.addEventListener("touchstart", close);
     return () => {
@@ -255,8 +265,7 @@ export default function ChatHistory({ onNavigate }: { onNavigate?: () => void })
         {menuFor === c.id && (
           <div
             role="menu"
-            onMouseDown={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
+            ref={menuRef}
             style={{
               position: "absolute",
               right: 4,
