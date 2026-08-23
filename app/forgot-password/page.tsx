@@ -1,17 +1,18 @@
 "use client";
 /**
- * Password reset.
+ * Password recovery via email SIGN-IN link.
  *
- * Firebase sends a signed reset LINK rather than a numeric code — there is no
- * email-OTP primitive in Firebase Auth, and the link is the flow Google
- * supports and secures (single use, expiring, tied to the address). The page is
- * written so the user always ends up on the same confirmation screen whether or
- * not the address exists, which is what stops it being an account-enumeration
- * oracle.
+ * Firebase's own reset email wasn't reaching inboxes, while the sign-in-link
+ * template was — so this sends the link instead. Clicking it signs the user in
+ * (which already proves control of the address) and /auth/verify then forwards
+ * them to /auth/new-password to choose a new one.
+ *
+ * The screen looks identical whether or not the address is registered, so it
+ * can't be used to enumerate accounts.
  */
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { sendPasswordResetEmail } from "firebase/auth";
+import { sendSignInLinkToEmail } from "firebase/auth";
 import { useTheme } from "next-themes";
 import { ArrowLeft, MailCheck, Moon, Sun } from "lucide-react";
 import { auth } from "../../lib/firebase";
@@ -49,17 +50,29 @@ export default function ForgotPasswordPage() {
     }
     setBusy(true);
     try {
-      await sendPasswordResetEmail(auth, address, {
-        url: `${window.location.origin}/login`,
+      await sendSignInLinkToEmail(auth, address, {
+        // Land on the verifier, which completes sign-in then hands off to the
+        // set-password step.
+        url: `${window.location.origin}/auth/verify?next=/auth/new-password`,
+        handleCodeInApp: true,
       });
+      // /auth/verify reads this so the user isn't re-prompted for their address.
+      window.localStorage.setItem("calolean_email_for_signin", address);
       setSent(true);
       setCooldown(RESEND_SECONDS);
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code || "";
       // Never reveal whether an address is registered.
-      if (code === "auth/user-not-found" || code === "auth/invalid-email") {
+      if (code === "auth/user-not-found") {
         setSent(true);
         setCooldown(RESEND_SECONDS);
+      } else if (code === "auth/operation-not-allowed") {
+        const project = auth.app.options.projectId || "unknown";
+        setError(
+          `Email-link sign-in is disabled for Firebase project "${project}". Enable it under Authentication → Sign-in method → Email/Password → Email link.`
+        );
+      } else if (code === "auth/invalid-email") {
+        setError("That email address doesn't look valid.");
       } else if (code === "auth/too-many-requests") {
         setError("Too many attempts. Wait a few minutes and try again.");
       } else if (code === "auth/network-request-failed") {
@@ -192,9 +205,9 @@ export default function ForgotPasswordPage() {
                 Check your inbox
               </h2>
               <p style={{ margin: "0 0 18px", fontSize: 14, lineHeight: 1.6, color: "var(--text-secondary)" }}>
-                If an account exists for{" "}
-                <strong style={{ color: "var(--text-primary)" }}>{email.trim()}</strong>, we&apos;ve sent a link to set a
-                new password. It expires in an hour.
+                We&apos;ve sent a secure sign-in link to{" "}
+                <strong style={{ color: "var(--text-primary)" }}>{email.trim()}</strong>. Open it on this device — it
+                signs you in and takes you straight to setting a new password.
               </p>
               <p style={{ margin: "0 0 20px", fontSize: 12.5, lineHeight: 1.6, color: "var(--text-tertiary)" }}>
                 Nothing yet? Check spam — and make sure you used the address you signed up with.
@@ -251,7 +264,8 @@ export default function ForgotPasswordPage() {
                 Forgot your password?
               </h1>
               <p style={{ margin: "0 0 26px", fontSize: 14.5, lineHeight: 1.6, color: "var(--text-secondary)" }}>
-                Enter your email and we&apos;ll send you a secure link to set a new one.
+                Enter your email and we&apos;ll send you a secure sign-in link. Open it and you can set a new password
+                right away — no old password needed.
               </p>
 
               {error && (
@@ -292,7 +306,7 @@ export default function ForgotPasswordPage() {
                   disabled={busy}
                   style={{ width: "100%", opacity: busy ? 0.6 : 1 }}
                 >
-                  {busy ? "Sending…" : "Send reset link"}
+                  {busy ? "Sending…" : "Email me a sign-in link"}
                 </button>
               </form>
 
