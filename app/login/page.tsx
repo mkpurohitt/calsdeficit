@@ -10,10 +10,9 @@ import {
   GoogleAuthProvider,
   RecaptchaVerifier,
   signInWithPhoneNumber,
-  sendSignInLinkToEmail,
   type ConfirmationResult,
 } from "firebase/auth";
-import { Eye, EyeOff, Activity, Utensils, Dumbbell, Sun, Moon, Mail, Smartphone, MailCheck } from "lucide-react";
+import { Eye, EyeOff, Activity, Utensils, Dumbbell, Sun, Moon, Mail, Smartphone } from "lucide-react";
 import { useTheme } from "next-themes";
 
 export default function LoginScreen() {
@@ -30,8 +29,6 @@ export default function LoginScreen() {
   const [sentTo, setSentTo] = useState("");
   const [phoneLoading, setPhoneLoading] = useState(false);
   // email-link flow
-  const [linkSent, setLinkSent] = useState(false);
-  const [linkLoading, setLinkLoading] = useState(false);
 
   const recaptchaRef = useRef<HTMLDivElement>(null);
   const verifierRef = useRef<RecaptchaVerifier | null>(null);
@@ -88,8 +85,17 @@ export default function LoginScreen() {
       if (code === "auth/quota-exceeded") {
         return "SMS limit reached for now. Please try again later or sign in another way.";
       }
+      // Surface the project the bundle is actually talking to: this error means
+      // the Phone provider is off for THAT project, which is usually a
+      // different one from the console tab that's open.
       if (code === "auth/operation-not-allowed" || code === "auth/billing-not-enabled") {
-        return `Phone sign-in isn't available right now (${code}). Please use email or Google.`;
+        const project = auth.app.options.projectId || "unknown";
+        return `Phone sign-in is disabled for Firebase project "${project}" (${code}). Enable the Phone provider for that exact project, then reload.`;
+      }
+      // Classic reCAPTCHA/App Check failure — distinct from a disabled provider.
+      if (code === "auth/invalid-app-credential" || code === "auth/captcha-check-failed") {
+        const domain = auth.app.options.authDomain || "unknown";
+        return `Couldn't verify this site with reCAPTCHA (${code}). Add this domain to Firebase Authentication → Settings → Authorized domains (auth domain: ${domain}).`;
       }
       return code ? `${friendlyAuthError(err)} (${code})` : friendlyAuthError(err);
     },
@@ -132,32 +138,6 @@ export default function LoginScreen() {
       router.push("/");
     } catch (err: unknown) {
       setError(friendlyAuthError(err));
-    }
-  };
-
-  const handleSendLink = async () => {
-    setError("");
-    if (!email || !/\S+@\S+\.\S+/.test(email)) {
-      setError("Enter your email address above first, then we'll send you a sign-in link.");
-      return;
-    }
-    setLinkLoading(true);
-    try {
-      await sendSignInLinkToEmail(auth, email, {
-        url: window.location.origin + "/auth/verify",
-        handleCodeInApp: true,
-      });
-      window.localStorage.setItem("calolean_email_for_signin", email);
-      setLinkSent(true);
-    } catch (err: unknown) {
-      const code = (err as { code?: string })?.code || "";
-      if (code === "auth/operation-not-allowed") {
-        setError("Email-link sign-in isn't enabled for this app yet. Please use your password or Google.");
-      } else {
-        setError(friendlyAuthError(err));
-      }
-    } finally {
-      setLinkLoading(false);
     }
   };
 
@@ -221,7 +201,7 @@ export default function LoginScreen() {
           position: "relative",
           overflow: "hidden",
           minWidth: 0,
-          background: "var(--on-accent)",
+          background: "var(--brand-panel)",
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
@@ -254,14 +234,14 @@ export default function LoginScreen() {
           {/* brand mark + wordmark */}
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 54 }}>
             <svg width="32" height="32" viewBox="0 0 100 100" aria-hidden>
-              {/* dark brand panel always uses the lime-disc/white-dot variant */}
+              {/* Panel is dark in both themes, so the mark keeps its dark-mode variant */}
               <mask id="lg-auth">
                 <rect width="100" height="100" fill="black" />
                 <circle cx="50" cy="50" r="42" fill="white" />
                 <circle cx="77" cy="23" r="27" fill="black" />
               </mask>
-              <circle cx="50" cy="50" r="42" fill="var(--lime-400)" mask="url(#lg-auth)" />
-              <circle cx="77" cy="23" r="10.5" fill="#FFFFFF" />
+              <circle cx="50" cy="50" r="42" fill="var(--brand-panel-accent)" mask="url(#lg-auth)" />
+              <circle cx="77" cy="23" r="10.5" fill="var(--brand-panel-text)" />
             </svg>
             <span
               style={{
@@ -269,10 +249,10 @@ export default function LoginScreen() {
                 fontSize: 26,
                 fontWeight: 700,
                 letterSpacing: "-.5px",
-                color: "#fff",
+                color: "var(--brand-panel-text)",
               }}
             >
-              calo<span style={{ color: "var(--lime-400)" }}>lean</span>
+              calo<span style={{ color: "var(--brand-panel-accent)" }}>lean</span>
             </span>
           </div>
 
@@ -283,7 +263,7 @@ export default function LoginScreen() {
               fontSize: 46,
               lineHeight: 1.05,
               fontWeight: 700,
-              color: "#fff",
+              color: "var(--brand-panel-text)",
               margin: "0 0 18px",
               maxWidth: "9ch",
             }}
@@ -298,7 +278,7 @@ export default function LoginScreen() {
                 fontFamily: "var(--font-mono)",
                 fontSize: 12,
                 letterSpacing: ".18em",
-                color: "var(--lime-400)",
+                color: "var(--brand-panel-accent)",
               }}
             >
               GET LEANER, FASTER
@@ -315,19 +295,19 @@ export default function LoginScreen() {
                     width: 42,
                     height: 42,
                     borderRadius: 12,
-                    background: "color-mix(in srgb, var(--accent) 12%, transparent)",
-                    border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
+                    background: "color-mix(in srgb, var(--brand-panel-accent) 14%, transparent)",
+                    border: "1px solid color-mix(in srgb, var(--brand-panel-accent) 30%, transparent)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    color: "var(--lime-400)",
+                    color: "var(--brand-panel-accent)",
                   }}
                 >
                   <f.icon size={20} />
                 </span>
                 <div>
-                  <div style={{ color: "#fff", fontWeight: 600, fontSize: 15 }}>{f.t}</div>
-                  <div style={{ color: "#8A95AC", fontSize: 13, lineHeight: 1.5, marginTop: 2 }}>{f.s}</div>
+                  <div style={{ color: "var(--brand-panel-text)", fontWeight: 600, fontSize: 15 }}>{f.t}</div>
+                  <div style={{ color: "var(--brand-panel-muted)", fontSize: 13, lineHeight: 1.5, marginTop: 2 }}>{f.s}</div>
                 </div>
               </div>
             ))}
@@ -455,71 +435,7 @@ export default function LoginScreen() {
             </div>
           )}
 
-          {method === "email" && linkSent && (
-            /* Email link sent — check inbox state */
-            <div
-              className="cl-card"
-              style={{ textAlign: "center", padding: "30px 24px", marginBottom: 4 }}
-            >
-              <span
-                style={{
-                  display: "inline-flex",
-                  width: 52,
-                  height: 52,
-                  borderRadius: 16,
-                  background: "color-mix(in srgb, var(--accent) 12%, transparent)",
-                  border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--lime-600)",
-                  marginBottom: 14,
-                }}
-              >
-                <MailCheck size={24} />
-              </span>
-              <h3
-                style={{
-                  fontFamily: "var(--font-display)",
-                  fontSize: 20,
-                  fontWeight: 700,
-                  margin: "0 0 6px",
-                  color: "var(--text-primary)",
-                }}
-              >
-                Check your inbox
-              </h3>
-              <p style={{ margin: "0 0 18px", fontSize: 14, lineHeight: 1.55, color: "var(--text-secondary)" }}>
-                We sent a sign-in link to <strong style={{ color: "var(--text-primary)" }}>{email}</strong>. Open it on
-                this device to sign in instantly — no password needed.
-              </p>
-              <button
-                type="button"
-                onClick={handleSendLink}
-                disabled={linkLoading}
-                className="btn-secondary"
-                style={{ width: "100%", opacity: linkLoading ? 0.6 : 1 }}
-              >
-                {linkLoading ? "Resending…" : "Resend link"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setLinkSent(false)}
-                style={{
-                  marginTop: 12,
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "var(--text-secondary)",
-                }}
-              >
-                Use password instead
-              </button>
-            </div>
-          )}
-
-          {method === "email" && !linkSent && (
+          {method === "email" && (
             <form onSubmit={handleEmailLogin}>
               {/* Email */}
               <label
@@ -602,26 +518,6 @@ export default function LoginScreen() {
                 Sign In
               </button>
 
-              {/* Passwordless email link */}
-              <button
-                type="button"
-                onClick={handleSendLink}
-                disabled={linkLoading}
-                style={{
-                  width: "100%",
-                  marginTop: 12,
-                  padding: "10px 0",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  fontSize: 13.5,
-                  fontWeight: 600,
-                  color: "var(--lime-600)",
-                  opacity: linkLoading ? 0.6 : 1,
-                }}
-              >
-                {linkLoading ? "Sending link…" : "Email me a sign-in link instead"}
-              </button>
             </form>
           )}
 

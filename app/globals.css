@@ -112,6 +112,14 @@
   --ring-track:      #EDE7DD;
   --logo-disc:       #314D3E;
   --logo-dot:        var(--kelly-green);
+  /* The auth marketing panel is deliberately dark in BOTH themes — it carries
+     white copy over a glow, so it must not follow the light surface tokens. */
+  --brand-panel:     #0F1613;
+  --brand-panel-text: #F5F5F5;
+  --brand-panel-muted: #9BA8A1;
+  /* The panel is dark even in light mode, so it needs the lifted dark-mode
+     accent — the light accent is tuned for cream and goes muddy here. */
+  --brand-panel-accent: #4ECB80;
   --shadow-card:     0 2px 8px rgba(49, 77, 62, 0.05), 0 8px 24px rgba(49, 77, 62, 0.05);
 }
 
