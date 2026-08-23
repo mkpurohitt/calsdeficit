@@ -570,7 +570,8 @@ function Dashboard() {
             style={{
               display: "flex",
               flexDirection: "column",
-              height: "calc(100vh - 34px)",
+              // Content height minus this page's own vertical padding (20 + 14).
+              height: "calc(var(--app-content-h) - 34px)",
               overflow: "hidden",
               position: "relative",
             }}
@@ -1111,8 +1112,9 @@ function Dashboard() {
             display: none !important;
           }
           .cl-chat-card {
-            /* viewport minus mobile top bar (56) + bottom nav (66) + gaps */
-            height: calc(100dvh - 140px) !important;
+            /* --app-content-h already excludes the top bar and bottom nav, so
+               only this page's own 10px of padding is left to take off. */
+            height: calc(var(--app-content-h) - 10px) !important;
           }
           /* On a phone the greeting reads at the top and the composer stays at
              the bottom under the thumb. */

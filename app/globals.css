@@ -177,11 +177,43 @@ html {
   scroll-behavior: smooth;
 }
 
+/* ── Viewport height, one source of truth ──────────────────────────────────
+   `100vh` on a phone means the viewport with the browser toolbars *hidden*,
+   so a 100vh shell is always taller than what you can actually see: the page
+   scrolls by the toolbar height, the toolbar collapses, everything shifts.
+   `svh` is the small viewport — the size with the toolbars showing — so a
+   shell sized to it never changes height and never drifts. Browsers without
+   `svh` keep the old `vh` behaviour. */
+:root {
+  --app-vh: 100vh;
+  /* Height left for page content once the app chrome is subtracted. Desktop
+     has none (the sidebar is beside the content, not above it). */
+  --app-chrome: 0px;
+  --app-content-h: var(--app-vh);
+}
+@supports (height: 100svh) {
+  :root { --app-vh: 100svh; }
+}
+@media (max-width: 860px) {
+  :root {
+    /* Mobile top bar (56, border-box so its 1px rule is included) + bottom nav
+       (66 content-box + its 1px top rule) + the home-indicator inset. */
+    --app-chrome: calc(56px + 67px + env(safe-area-inset-bottom, 0px));
+    --app-content-h: calc(var(--app-vh) - var(--app-chrome));
+  }
+}
+
+/* Tailwind's `h-screen`/`min-h-screen` are 100vh, which overshoots the visible
+   area on mobile for the same reason. Retarget them at the stable height. */
+.h-screen { height: var(--app-vh); }
+.min-h-screen { min-height: var(--app-vh); }
+
 /* Never allow sideways panning — wide content must scroll inside its own
    container, the page itself stays locked to the viewport width. */
 html, body {
   overflow-x: clip;
   max-width: 100vw;
+  height: 100%;
 }
 
 body {
@@ -535,7 +567,7 @@ img, video, svg, canvas {
 .cl-auth {
   display: grid;
   grid-template-columns: 1.04fr 1fr;
-  min-height: 100vh;
+  min-height: var(--app-vh);
 }
 @media (max-width: 860px) {
   .cl-auth { grid-template-columns: 1fr !important; }

@@ -66,175 +66,177 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark");
 
   return (
-    <div className="flex" style={{ minHeight: "100vh", background: "var(--bg-app)", color: "var(--text-primary)" }}>
+    <div className="cl-shell" style={{ background: "var(--bg-app)", color: "var(--text-primary)" }}>
+      <div className="cl-shell-body">
 
-      {/* ── Desktop Sidebar ── */}
-      <aside
-        className="cl-sidebar"
-        style={{
-          position: "sticky",
-          top: 0,
-          height: "100vh",
-          width: 252,
-          flex: "none",
-          background: "var(--bg-sidebar)",
-          borderRight: "1px solid var(--border-color)",
-          display: "flex",
-          flexDirection: "column",
-          padding: "22px 16px",
-        }}
-      >
-        {/* Logo */}
-        <Link href="/" style={{ display: "flex", alignItems: "center", gap: 11, padding: "6px 10px 26px", textDecoration: "none" }}>
-          <BrandMark size={28} id="lg-side" />
-          <span className="brand-wordmark" style={{ fontSize: 21, color: "var(--text-primary)" }}>
-            calo<span style={{ color: "var(--lime-400)" }}>lean</span>
-          </span>
-        </Link>
-
-        {/* Nav */}
-        <nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          {NAV_ITEMS.map((item) => {
-            const active = isActive(item.href);
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className="flex items-center"
-                style={{
-                  gap: 13,
-                  padding: "11px 13px",
-                  borderRadius: 11,
-                  fontWeight: 500,
-                  fontSize: 15,
-                  textDecoration: "none",
-                  color: active ? "var(--lime-400)" : "var(--text-secondary)",
-                  background: active ? "color-mix(in srgb, var(--accent) 10%, transparent)" : "transparent",
-                  boxShadow: active ? "inset 3px 0 0 var(--lime-400)" : "inset 3px 0 0 transparent",
-                  transition: "all 0.15s ease",
-                }}
-                onMouseEnter={(e) => {
-                  if (!active) {
-                    e.currentTarget.style.background = "var(--surface-elevated)";
-                    e.currentTarget.style.color = "var(--text-primary)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!active) {
-                    e.currentTarget.style.background = "transparent";
-                    e.currentTarget.style.color = "var(--text-secondary)";
-                  }
-                }}
-              >
-                <item.icon size={20} />
-                <span>{item.name}</span>
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* Past conversations (Claude-style) — desktop rail */}
-        <ChatHistory />
-
-        {/* Bottom user card */}
-        <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
-          <Link
-            href="/profile"
-            className="flex items-center"
-            style={{
-              gap: 11,
-              padding: 9,
-              borderRadius: 12,
-              textDecoration: "none",
-              border: "1px solid var(--border-subtle)",
-              background: "var(--surface-card)",
-            }}
-          >
-            <span
-              className="flex items-center justify-center"
-              style={{
-                flex: "none",
-                width: 34,
-                height: 34,
-                borderRadius: "50%",
-                background: "linear-gradient(135deg, var(--lime-400), #72B800)",
-                fontWeight: 700,
-                color: "var(--on-accent)",
-                fontSize: 14,
-              }}
-            >
-              {userInitial}
-            </span>
-            <span style={{ minWidth: 0, flex: 1 }}>
-              <span className="truncate" style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
-                {userName}
-              </span>
-              <span style={{ display: "block", fontSize: 11, color: "var(--text-tertiary)" }}>Free plan</span>
-            </span>
-            {mounted && (
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  toggleTheme();
-                }}
-                aria-label="Toggle theme"
-                style={{
-                  flex: "none",
-                  width: 30,
-                  height: 30,
-                  borderRadius: 8,
-                  border: "none",
-                  background: "var(--surface-elevated)",
-                  color: "var(--text-secondary)",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
-              </button>
-            )}
-          </Link>
-        </div>
-      </aside>
-
-      {/* ── Main ── */}
-      <main className="flex-1" style={{ minWidth: 0, height: "100vh", overflowY: "auto" }}>
-        {/* Mobile top bar */}
-        <div
-          className="cl-mobiletop flex items-center justify-between px-4 sticky top-0 z-30"
+        {/* ── Desktop Sidebar ── */}
+        <aside
+          className="cl-sidebar"
           style={{
-            height: 56,
+            width: 252,
+            flex: "none",
+            minHeight: 0,
             background: "var(--bg-sidebar)",
-            borderBottom: "1px solid var(--border-color)",
+            borderRight: "1px solid var(--border-color)",
+            display: "flex",
+            flexDirection: "column",
+            padding: "22px 16px",
           }}
         >
-          <span className="flex items-center" style={{ gap: 6 }}>
-            <button
-              onClick={() => setDrawerOpen(true)}
-              className="btn-icon"
-              style={{ width: 36, height: 36, marginLeft: -6 }}
-              aria-label="Open chat history"
-              aria-expanded={drawerOpen}
-            >
-              <Menu size={20} />
-            </button>
-            <BrandMark size={24} id="lg-top" />
-            <span className="brand-wordmark" style={{ fontSize: 19, color: "var(--text-primary)" }}>
+          {/* Logo */}
+          <Link href="/" style={{ display: "flex", alignItems: "center", gap: 11, padding: "6px 10px 26px", textDecoration: "none" }}>
+            <BrandMark size={28} id="lg-side" />
+            <span className="brand-wordmark" style={{ fontSize: 21, color: "var(--text-primary)" }}>
               calo<span style={{ color: "var(--lime-400)" }}>lean</span>
             </span>
-          </span>
-          {mounted && (
-            <button onClick={toggleTheme} className="btn-icon" style={{ width: 36, height: 36 }} aria-label="Toggle theme">
-              {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
-          )}
-        </div>
+          </Link>
 
-        {children}
-      </main>
+          {/* Nav */}
+          <nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {NAV_ITEMS.map((item) => {
+              const active = isActive(item.href);
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className="flex items-center"
+                  style={{
+                    gap: 13,
+                    padding: "11px 13px",
+                    borderRadius: 11,
+                    fontWeight: 500,
+                    fontSize: 15,
+                    textDecoration: "none",
+                    color: active ? "var(--lime-400)" : "var(--text-secondary)",
+                    background: active ? "color-mix(in srgb, var(--accent) 10%, transparent)" : "transparent",
+                    boxShadow: active ? "inset 3px 0 0 var(--lime-400)" : "inset 3px 0 0 transparent",
+                    transition: "all 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!active) {
+                      e.currentTarget.style.background = "var(--surface-elevated)";
+                      e.currentTarget.style.color = "var(--text-primary)";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!active) {
+                      e.currentTarget.style.background = "transparent";
+                      e.currentTarget.style.color = "var(--text-secondary)";
+                    }
+                  }}
+                >
+                  <item.icon size={20} />
+                  <span>{item.name}</span>
+                </Link>
+              );
+            })}
+          </nav>
+
+          {/* Past conversations (Claude-style) — desktop rail */}
+          <ChatHistory />
+
+          {/* Bottom user card */}
+          <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
+            <Link
+              href="/profile"
+              className="flex items-center"
+              style={{
+                gap: 11,
+                padding: 9,
+                borderRadius: 12,
+                textDecoration: "none",
+                border: "1px solid var(--border-subtle)",
+                background: "var(--surface-card)",
+              }}
+            >
+              <span
+                className="flex items-center justify-center"
+                style={{
+                  flex: "none",
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  background: "linear-gradient(135deg, var(--lime-400), #72B800)",
+                  fontWeight: 700,
+                  color: "var(--on-accent)",
+                  fontSize: 14,
+                }}
+              >
+                {userInitial}
+              </span>
+              <span style={{ minWidth: 0, flex: 1 }}>
+                <span className="truncate" style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
+                  {userName}
+                </span>
+                <span style={{ display: "block", fontSize: 11, color: "var(--text-tertiary)" }}>Free plan</span>
+              </span>
+              {mounted && (
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleTheme();
+                  }}
+                  aria-label="Toggle theme"
+                  style={{
+                    flex: "none",
+                    width: 30,
+                    height: 30,
+                    borderRadius: 8,
+                    border: "none",
+                    background: "var(--surface-elevated)",
+                    color: "var(--text-secondary)",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+                </button>
+              )}
+            </Link>
+          </div>
+        </aside>
+
+        {/* ── Main ── */}
+        <main className="cl-main">
+          {/* Mobile top bar — outside the scroll area, so it can't drift */}
+          <div
+            className="cl-mobiletop flex items-center justify-between px-4"
+            style={{
+              flex: "none",
+              height: 56,
+              background: "var(--bg-sidebar)",
+              borderBottom: "1px solid var(--border-color)",
+            }}
+          >
+            <span className="flex items-center" style={{ gap: 6 }}>
+              <button
+                onClick={() => setDrawerOpen(true)}
+                className="btn-icon"
+                style={{ width: 36, height: 36, marginLeft: -6 }}
+                aria-label="Open chat history"
+                aria-expanded={drawerOpen}
+              >
+                <Menu size={20} />
+              </button>
+              <BrandMark size={24} id="lg-top" />
+              <span className="brand-wordmark" style={{ fontSize: 19, color: "var(--text-primary)" }}>
+                calo<span style={{ color: "var(--lime-400)" }}>lean</span>
+              </span>
+            </span>
+            {mounted && (
+              <button onClick={toggleTheme} className="btn-icon" style={{ width: 36, height: 36 }} aria-label="Toggle theme">
+                {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+              </button>
+            )}
+          </div>
+
+          {/* The one and only scrolling region. Nothing outside it moves. */}
+          <div className="cl-scroll">{children}</div>
+        </main>
+      </div>
 
       {/* ── Mobile chat drawer (same history UI as the desktop rail) ── */}
       {drawerOpen && (
@@ -279,11 +281,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      {/* ── Mobile bottom nav ── */}
+      {/* ── Mobile bottom nav ──
+          Laid out as the last row of the shell rather than `position: fixed`.
+          A fixed bar is positioned against the *layout* viewport, which on a
+          phone is taller than what you can see — so it sat below the fold and
+          slid around as the browser toolbar collapsed. In flow it simply is
+          the bottom of the screen. */}
       <nav
-        className="cl-mobilebar fixed bottom-0 w-full flex justify-around items-center z-50"
+        className="cl-mobilebar flex justify-around items-center"
         style={{
+          flex: "none",
           height: 66,
+          boxSizing: "content-box",
           background: "var(--bg-sidebar)",
           borderTop: "1px solid var(--border-color)",
           paddingBottom: "env(safe-area-inset-bottom, 0px)",
@@ -314,6 +323,33 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* Responsive rules: hide sidebar on mobile, hide mobile chrome on desktop */}
       <style>{`
+        /* The app shell is exactly one screen tall and never scrolls itself,
+           so the chrome stays put and only the content region moves. */
+        .cl-shell {
+          display: flex;
+          flex-direction: column;
+          height: var(--app-vh);
+          overflow: hidden;
+          overscroll-behavior: none;
+        }
+        .cl-shell-body { display: flex; flex: 1; min-height: 0; }
+        .cl-main {
+          flex: 1;
+          min-width: 0;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+        }
+        .cl-scroll {
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+          overflow-x: hidden;
+          -webkit-overflow-scrolling: touch;
+          /* Don't hand leftover scroll to the document — that is what makes
+             the mobile toolbar show/hide and the whole page jump. */
+          overscroll-behavior: contain;
+        }
         .cl-mobiletop { display: none; }
         .cl-mobilebar { display: none; }
         .cl-newchat {
@@ -343,7 +379,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           .cl-sidebar { display: none !important; }
           .cl-mobiletop { display: flex !important; }
           .cl-mobilebar { display: flex !important; }
-          main { padding-bottom: 80px; }
         }
       `}</style>
     </div>
