@@ -324,14 +324,23 @@ export default function ExercisePage() {
         .ex-cols2 { display: grid; grid-template-columns: minmax(0,1fr) 336px; gap: 20px; align-items: start; }
         @media (max-width: 860px) {
           .ex-cols2 { grid-template-columns: 1fr; }
-          .ex-wrap { padding: 20px 16px 40px !important; }
+          .ex-wrap { padding: 14px 14px 24px !important; }
+          .ex-form-hero { flex-wrap: nowrap !important; padding: 14px 16px !important; gap: 12px !important; margin-bottom: 14px !important; }
+          .ex-form-hero .ex-form-icon { width: 40px !important; height: 40px !important; border-radius: 12px !important; }
+          .ex-form-hero .ex-form-icon svg { width: 20px !important; height: 20px !important; }
+          .ex-form-hero .ex-form-text { min-width: 0 !important; flex: 1 !important; }
+          .ex-form-hero .ex-form-text .cl-disp { font-size: 15px !important; }
+          .ex-form-hero .ex-form-desc { display: none !important; }
+          .ex-form-btn { padding: 9px 14px !important; font-size: 13px !important; border-radius: 10px !important; white-space: nowrap !important; }
+          .ex-header { margin-bottom: 14px !important; }
+          .ex-header h1 { font-size: 24px !important; }
         }
         @media (max-width: 640px) {
           .plan-tiles { grid-template-columns: repeat(2, 1fr) !important; }
         }
       `}</style>
       <div className="ex-wrap" style={{ padding: "30px 38px 48px", maxWidth: 1380, margin: "0 auto" }}>
-        <div style={{ marginBottom: 24 }}>
+        <div className="ex-header" style={{ marginBottom: 24 }}>
           <div className="cl-mono" style={{ fontFamily: "var(--font-mono)", fontSize: 12, letterSpacing: "0.12em", color: "var(--text-tertiary)", marginBottom: 7 }}>
             TRAINING · WEEK {weekNumber}
           </div>
@@ -342,23 +351,24 @@ export default function ExercisePage() {
 
         {/* Check Your Form hero */}
         <div
-          className="cl-card"
+          className="cl-card ex-form-hero"
           style={{ position: "relative", overflow: "hidden", borderRadius: 20, padding: "26px 28px", marginBottom: 20, display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap" }}
         >
           <div style={{ position: "absolute", right: -60, top: -60, width: 300, height: 300, background: "radial-gradient(circle, color-mix(in srgb, var(--accent) 14%, transparent), transparent 65%)", pointerEvents: "none" }} />
-          <span style={{ position: "relative", flex: "none", width: 62, height: 62, borderRadius: 18, background: "var(--lime-400)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--on-accent)" }}>
+          <span className="ex-form-icon" style={{ position: "relative", flex: "none", width: 62, height: 62, borderRadius: 18, background: "var(--lime-400)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--on-accent)" }}>
             <Video size={30} />
           </span>
-          <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
+          <div className="ex-form-text" style={{ position: "relative", flex: 1, minWidth: 220 }}>
             <div className="cl-disp" style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>
               Check Your Form
             </div>
-            <div style={{ fontSize: 14, color: "var(--text-secondary)", marginTop: 3 }}>
+            <div className="ex-form-desc" style={{ fontSize: 14, color: "var(--text-secondary)", marginTop: 3 }}>
               Upload a training clip — AI pose analysis scores every rep, fully on-device.
             </div>
           </div>
           <button
             onClick={handleUploadClick}
+            className="ex-form-btn"
             style={{
               position: "relative",
               flex: "none",
