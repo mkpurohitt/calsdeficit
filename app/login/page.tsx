@@ -112,6 +112,21 @@ export default function LoginScreen() {
     if (recaptchaRef.current) recaptchaRef.current.innerHTML = "";
   };
 
+  /**
+   * Where to land after a successful sign-in. `?next=` lets flows like a shared
+   * chat link send the user back where they started; it is restricted to
+   * same-origin paths so the parameter can't be used as an open redirect.
+   */
+  const landingPath = () => {
+    try {
+      const next = new URLSearchParams(window.location.search).get("next");
+      if (next && next.startsWith("/") && !next.startsWith("//")) return next;
+    } catch {
+      /* noop */
+    }
+    return "/";
+  };
+
   const getVerifier = () => {
     if (!verifierRef.current && recaptchaRef.current) {
       verifierRef.current = new RecaptchaVerifier(auth, recaptchaRef.current, { size: "invisible" });
@@ -124,7 +139,7 @@ export default function LoginScreen() {
     setError("");
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      router.push("/");
+      router.push(landingPath());
     } catch (err: unknown) {
       setError(friendlyAuthError(err));
     }
@@ -135,7 +150,7 @@ export default function LoginScreen() {
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
-      router.push("/");
+      router.push(landingPath());
     } catch (err: unknown) {
       setError(friendlyAuthError(err));
     }
@@ -179,7 +194,7 @@ export default function LoginScreen() {
     setPhoneLoading(true);
     try {
       await confirmationRef.current.confirm(otp);
-      router.push("/");
+      router.push(landingPath());
     } catch (err: unknown) {
       setError(friendlyPhoneError(err));
       setPhoneLoading(false);

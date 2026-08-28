@@ -23,6 +23,7 @@ import type {
   ConversationMeta,
   ConversationRecord,
   ScanHistoryRecord,
+  SharedChatRecord,
   UserGoalRecord,
   WorkoutLogRecord,
 } from "./types";
@@ -317,6 +318,30 @@ export const firestoreStore: UserDataStore = {
       await setDoc(doc(db, "users", userId, "conversations", id), { pinned }, { merge: true });
     } catch (error) {
       console.error("Error pinning conversation:", error);
+    }
+  },
+
+  // ── Public share snapshots ────────────────────────────────────────────────
+  // `shares` is a top-level collection, not a subcollection of the owner: the
+  // rules make it world-readable, and nesting it under /users would mean
+  // punching a public hole in a subtree that is otherwise owner-only.
+  async createShare(record: Omit<SharedChatRecord, "id">) {
+    try {
+      const ref = await addDoc(collection(db, "shares"), record);
+      return ref.id;
+    } catch (error) {
+      console.error("Error creating share:", error);
+      return null;
+    }
+  },
+
+  async getShare(id: string) {
+    try {
+      const snap = await getDoc(doc(db, "shares", id));
+      return snap.exists() ? ({ ...(snap.data() as SharedChatRecord), id: snap.id }) : null;
+    } catch (error) {
+      console.error("Error getting share:", error);
+      return null;
     }
   },
 

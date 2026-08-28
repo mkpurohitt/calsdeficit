@@ -6,6 +6,7 @@ import { Camera, CheckCircle2, Loader2, ShieldCheck, Sparkles } from "lucide-rea
 import { apiFetch } from "../lib/api-client";
 import { makeVideoThumb } from "../lib/image-compress";
 import AdCard from "./ads/AdCard";
+import ShareChatButton from "./ShareChatButton";
 
 export interface FormAnalysisResult {
   exercise_name: string;
@@ -234,6 +235,29 @@ export default function FormCheckPanel({ onResult }: FormCheckPanelProps) {
           )}
 
           <AdCard keywords={adKeywords} enabled={adsEnabled} />
+
+          {/* Snapshotted as a two-turn chat so a shared link opens in the same
+              reader as every other share, and can be carried on. */}
+          <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
+            <ShareChatButton
+              compact={false}
+              label="Share this analysis"
+              title={`${result.exercise_name} form check`}
+              messages={[
+                { role: "user", text: `How was my ${result.exercise_name} form?` },
+                {
+                  role: "ai",
+                  text: [
+                    `**${result.exercise_name} — ${result.verdict}** (${result.score}/100)`,
+                    result.positives.length ? `\n${result.positives.map((p) => `- ${p}`).join("\n")}` : "",
+                    result.corrections.length ? `\n**Fix this**\n${result.corrections.map((c) => `- ${c}`).join("\n")}` : "",
+                  ]
+                    .filter(Boolean)
+                    .join("\n"),
+                },
+              ]}
+            />
+          </div>
 
           <button
             onClick={reset}

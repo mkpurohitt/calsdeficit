@@ -134,6 +134,25 @@ export interface ConversationRecord {
   title_custom?: boolean;
 }
 
+/**
+ * A public, read-only snapshot of a conversation, addressable at /share/<id>.
+ *
+ * Sharing copies the messages rather than pointing at the original chat, so the
+ * owner can keep talking (or delete the chat) without changing what a recipient
+ * sees — and nothing else in the owner's account is ever exposed.
+ */
+export interface SharedChatRecord {
+  id?: string;
+  /** Who shared it — used to authorise edits/revocation, never displayed raw. */
+  owner_uid: string;
+  /** Display name shown as "Shared by …"; empty when the user has none set. */
+  owner_name: string;
+  title: string;
+  /** Same serialized shape as ConversationRecord.messages. */
+  messages: unknown[];
+  created_at: string;
+}
+
 /** Lightweight conversation header for the sidebar list (no messages). */
 export interface ConversationMeta {
   id: string;

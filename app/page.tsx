@@ -9,6 +9,7 @@ import AppLayout from "../components/AppLayout";
 import AdCard from "../components/ads/AdCard";
 import FoodScanCard from "../components/FoodScanCard";
 import { announceConversations } from "../components/ChatHistory";
+import ShareChatButton from "../components/ShareChatButton";
 import { apiFetch } from "../lib/api-client";
 import { compressImage, fileToBase64, makeImageThumb, MAX_VIDEO_BYTES } from "../lib/image-compress";
 import type { FoodScanResult } from "../lib/schemas/food-scan";
@@ -78,6 +79,28 @@ function greetingFor(date: Date, firstName: string): { title: string; sub: strin
   if (hour < 17) return { title: `Good afternoon${who}`, sub: "Scan a meal or ask me anything about your training." };
   if (hour < 21) return { title: `Good evening${who}`, sub: "How did today go? Log a meal or a workout." };
   return { title: `Winding down${who}?`, sub: "Let's close out the day — log what you ate or trained." };
+}
+
+/**
+ * Strips non-serializable/ephemeral fields (object-URLs, File handles) while
+ * keeping the cards, so a reopened or shared chat renders exactly as it did.
+ * Used for both history persistence and share snapshots.
+ */
+function serializeMessages(msgs: Message[]) {
+  return msgs.map((m) => ({
+    role: m.role,
+    text: m.text || "",
+    ...(m.scan ? { scan: m.scan } : {}),
+    ...(m.workout ? { workout: m.workout } : {}),
+    ...(m.exercises?.length ? { exercises: m.exercises } : {}),
+    ...(m.adKeywords?.length ? { adKeywords: m.adKeywords } : {}),
+    ...(typeof m.adsEnabled === "boolean" ? { adsEnabled: m.adsEnabled } : {}),
+  }));
+}
+
+/** Title for a chat / share, taken from the question that opened it. */
+function chatTitle(msgs: Message[]) {
+  return (msgs.find((m) => m.role === "user")?.text?.trim() || "Calolean chat").slice(0, 48);
 }
 
 /** Meal slot inferred from the current time of day. */
@@ -402,19 +425,9 @@ function Dashboard() {
   const persistConversation = useCallback(async (msgs: Message[]) => {
     if (!user?.uid) return;
     if (!msgs.some((m) => m.role === "user")) return; // don't save the lone greeting
-    // Strip non-serializable/ephemeral fields; keep the cards so reopening restores them.
-    const serial = msgs.slice(-40).map((m) => ({
-      role: m.role,
-      text: m.text || "",
-      ...(m.scan ? { scan: m.scan } : {}),
-      ...(m.workout ? { workout: m.workout } : {}),
-      ...(m.exercises?.length ? { exercises: m.exercises } : {}),
-      ...(m.adKeywords?.length ? { adKeywords: m.adKeywords } : {}),
-      ...(typeof m.adsEnabled === "boolean" ? { adsEnabled: m.adsEnabled } : {}),
-    }));
-    const firstUser = msgs.find((m) => m.role === "user");
+    const serial = serializeMessages(msgs.slice(-40));
     const last = msgs[msgs.length - 1];
-    const title = (firstUser?.text?.trim() || "New chat").slice(0, 48);
+    const title = chatTitle(msgs);
     const preview = (last ? toHistoryText(last) : "").slice(0, 90);
     const now = new Date().toISOString();
     const saved = await saveConversation({
@@ -756,6 +769,17 @@ function Dashboard() {
                         ) : null}
                       </div>
                     )}
+
+                    {/* Share the conversation as it stood at this answer, so the
+                        link carries the context a recipient needs to follow it. */}
+                    {msg.role === "ai" && !isProcessing && (
+                      <div className="cl-msg-actions">
+                        <ShareChatButton
+                          messages={serializeMessages(messages.slice(0, idx + 1))}
+                          title={chatTitle(messages)}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1073,6 +1097,22 @@ function Dashboard() {
           text-align: center;
           padding: 0 12px 18px;
         }
+        /* Per-answer action row (Share). Sits under the bubble content, muted
+           until hovered so it never competes with the answer itself. */
+        .cl-msg-actions {
+          display: flex;
+          justify-content: flex-end;
+          margin-top: 10px;
+          opacity: 0.75;
+          transition: opacity 0.12s ease;
+        }
+        .chat-bubble-ai:hover .cl-msg-actions {
+          opacity: 1;
+        }
+        /* Touch devices have no hover, so keep it fully legible there. */
+        @media (hover: none) {
+          .cl-msg-actions { opacity: 1; }
+        }
         .cl-quickstarts {
           display: flex;
           flex-wrap: wrap;
@@ -1101,7 +1141,9 @@ function Dashboard() {
 
         @media (max-width: 860px) {
           .cl-home {
-            padding: 10px 12px 0 !important;
+            /* The bottom padding is breathing room between the composer and the
+               nav bar — flush against it, the input read as part of the nav. */
+            padding: 10px 12px 12px !important;
           }
           .cl-home-grid {
             grid-template-columns: 1fr;
@@ -1113,8 +1155,8 @@ function Dashboard() {
           }
           .cl-chat-card {
             /* --app-content-h already excludes the top bar and bottom nav, so
-               only this page's own 10px of padding is left to take off. */
-            height: calc(var(--app-content-h) - 10px) !important;
+               only this page's own 10 + 12px of padding is left to take off. */
+            height: calc(var(--app-content-h) - 22px) !important;
           }
           /* On a phone the greeting reads at the top and the composer stays at
              the bottom under the thumb. */

@@ -1,6 +1,8 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import AppLayout from "../../components/AppLayout";
+import ShareChatButton from "../../components/ShareChatButton";
 import WeekStrip from "../../components/WeekStrip";
 import { Droplet, Camera, Plus, ChevronDown, ChevronUp, Trash2, X, Upload, Loader2, Check, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -73,6 +75,9 @@ export default function DietPage() {
   const [saved, setSaved] = useState(false);
   const [savingFood, setSavingFood] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // The scanner renders through a portal, which needs a DOM to target.
+  const [portalReady, setPortalReady] = useState(false);
+  useEffect(() => setPortalReady(true), []);
 
   // Redirect unauthenticated users
   useEffect(() => {
@@ -198,6 +203,23 @@ export default function DietPage() {
     setSaved(false);
     setSavingFood(false);
   };
+
+  // While the scanner is up, the page behind it must not scroll and Escape
+  // must dismiss — the same contract as the mobile chat drawer.
+  useEffect(() => {
+    if (!showScanner) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") closeScanner();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      document.removeEventListener("keydown", onKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showScanner]);
 
   const handleImageSelect = (file: File) => {
     setScanImage(file);
@@ -927,63 +949,41 @@ export default function DietPage() {
         </div>
       </div>
 
-      {/* ── Food Scanner Modal ── */}
-      {showScanner && (
+      {/* ── Food Scanner Modal ──
+          Rendered through a portal onto <body>. Inline in the page it was
+          positioned against the scrolling content region rather than the
+          viewport, so on a phone it opened above the fold and had to be
+          scrolled back to. On <body> nothing can capture it. */}
+      {showScanner && portalReady && createPortal(
         <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 100,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "rgba(0,0,0,0.7)",
-            backdropFilter: "blur(8px)",
-            animation: "fadeIn 0.2s ease",
-          }}
+          className="scan-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="AI Food Scanner"
           onClick={(e) => { if (e.target === e.currentTarget) closeScanner(); }}
         >
-          <div
-            className="cl-card-elevated"
-            style={{
-              width: "100%",
-              maxWidth: 480,
-              maxHeight: "90vh",
-              overflowY: "auto",
-              borderRadius: 20,
-              padding: "28px 24px",
-              margin: 16,
-              animation: "floatIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
-            }}
-          >
+          <div className="scan-modal">
             {/* Modal Header */}
-            <div className="flex items-center justify-between" style={{ marginBottom: 20 }}>
-              <div className="flex items-center gap-3">
-                <div style={{
-                  width: 40, height: 40, borderRadius: "var(--radius-md)",
-                  background: "linear-gradient(135deg, var(--lime-400), #8BC34A)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}>
-                  <Sparkles size={20} style={{ color: "var(--on-accent)" }} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)", fontFamily: "var(--font-display)" }}>
+            <div className="scan-modal__head">
+              <div className="flex items-center" style={{ gap: 12, minWidth: 0 }}>
+                <span className="scan-modal__icon">
+                  <Sparkles size={20} />
+                </span>
+                <span style={{ minWidth: 0 }}>
+                  <h3 className="cl-disp" style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)", margin: 0, lineHeight: 1.2 }}>
                     AI Food Scanner
                   </h3>
-                </div>
+                  <span style={{ display: "block", fontSize: 12.5, color: "var(--text-tertiary)", marginTop: 2 }}>
+                    Snap it or describe it — we&apos;ll do the maths.
+                  </span>
+                </span>
               </div>
-              <button
-                onClick={closeScanner}
-                style={{
-                  width: 32, height: 32, borderRadius: "var(--radius-full)",
-                  background: "var(--surface-elevated)", border: "none",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  cursor: "pointer", color: "var(--text-secondary)",
-                }}
-              >
+              <button onClick={closeScanner} className="btn-icon" style={{ width: 34, height: 34, flex: "none" }} aria-label="Close scanner">
                 <X size={16} />
               </button>
             </div>
+
+            <div className="scan-modal__body">
 
             {/* Meal Type Selector */}
             <div style={{ marginBottom: 16 }}>
@@ -1115,7 +1115,7 @@ export default function DietPage() {
               >
                 {scanning ? (
                   <>
-                    <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} />
+                    <Loader2 size={18} className="animate-spin" />
                     Analyzing with AI...
                   </>
                 ) : (
@@ -1180,14 +1180,33 @@ export default function DietPage() {
                     className="btn-primary w-full flex items-center justify-center gap-2"
                     style={{ height: 44, borderRadius: "var(--radius-md)", fontSize: 14, opacity: savingFood ? 0.7 : 1 }}
                   >
-                    {savingFood ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : <Plus size={16} />}
+                    {savingFood ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
                     {savingFood ? "Saving..." : `Save to ${scanMealType}`}
                   </button>
                 )}
+
+                {/* Share the breakdown — snapshotted as a two-turn chat so the
+                    recipient can open it and keep asking about the meal. */}
+                <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
+                  <ShareChatButton
+                    compact={false}
+                    label="Share this result"
+                    title={scanResult.food_name || "Food scan"}
+                    messages={[
+                      {
+                        role: "user",
+                        text: scanContext.trim() || `What's in ${scanResult.food_name}?`,
+                      },
+                      { role: "ai", text: "", scan: scanResult },
+                    ]}
+                  />
+                </div>
               </div>
             )}
+            </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Keyframe animations */}
@@ -1202,6 +1221,70 @@ export default function DietPage() {
           .diet-cols {
             grid-template-columns: 1fr;
           }
+        }
+        /* ── Food scanner modal ──────────────────────────────────────────── */
+        .scan-backdrop {
+          position: fixed;
+          inset: 0;
+          z-index: 150;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 16px;
+          background: rgba(9, 14, 12, 0.6);
+          backdrop-filter: blur(7px);
+          animation: fadeIn 0.18s ease;
+        }
+        .scan-modal {
+          display: flex;
+          flex-direction: column;
+          width: 100%;
+          max-width: 480px;
+          /* Never taller than what's actually on screen, so no part of the
+             dialog can end up out of reach. */
+          max-height: calc(var(--app-vh) - 32px);
+          border-radius: 22px;
+          background: var(--surface-card);
+          border: 1px solid var(--border-color);
+          box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.45);
+          overflow: hidden;
+          animation: floatIn 0.26s cubic-bezier(0.34, 1.4, 0.64, 1);
+        }
+        .scan-modal__head {
+          flex: none;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 18px 18px 14px;
+          border-bottom: 1px solid var(--border-subtle);
+          background: var(--surface-elevated);
+        }
+        .scan-modal__icon {
+          flex: none;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 40px;
+          height: 40px;
+          border-radius: 13px;
+          background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #8BC34A));
+          color: var(--on-accent);
+        }
+        /* Only the body scrolls, so the title and close button stay reachable
+           however long the result gets. */
+        .scan-modal__body {
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          padding: 18px;
+        }
+        @media (max-width: 480px) {
+          .scan-backdrop { padding: 10px; }
+          .scan-modal { max-height: calc(var(--app-vh) - 20px); border-radius: 18px; }
+          .scan-modal__head { padding: 14px 14px 12px; }
+          .scan-modal__body { padding: 14px; }
         }
         @keyframes fadeIn {
           from { opacity: 0; }

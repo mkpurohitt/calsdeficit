@@ -34,6 +34,17 @@ service cloud.firestore {
       }
     }
 
+    // Shared chat snapshots. Deliberately world-readable — an unguessable id
+    // IS the capability, the same model ChatGPT/Claude share links use. Only
+    // the signed-in owner can publish one, and only they can revoke it.
+    match /shares/{shareId} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.owner_uid == request.auth.uid;
+      allow update, delete: if request.auth != null
+        && resource.data.owner_uid == request.auth.uid;
+    }
+
     // Subscription + health tokens: Admin SDK only, never client-accessible.
     match /private/{uid} {
       allow read, write: if false;

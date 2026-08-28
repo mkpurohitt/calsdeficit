@@ -7,6 +7,7 @@ import type {
   FormAnalysisRecord,
   NotificationPreferenceRecord,
   ScanHistoryRecord,
+  SharedChatRecord,
   UserGoalRecord,
   WorkoutLogRecord,
 } from "./types";
@@ -41,4 +42,9 @@ export interface UserDataStore {
   deleteConversation(userId: string, id: string): Promise<void>;
   renameConversation(userId: string, id: string, title: string): Promise<void>;
   setConversationPinned(userId: string, id: string, pinned: boolean): Promise<void>;
+
+  /** Publishes a read-only snapshot; resolves to its share id, or null on failure. */
+  createShare(record: Omit<SharedChatRecord, "id">): Promise<string | null>;
+  /** Reads a shared snapshot. Callable while signed out — that is the point. */
+  getShare(id: string): Promise<SharedChatRecord | null>;
 }

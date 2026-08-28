@@ -12,6 +12,7 @@ import type {
   NotificationPreferenceRecord,
   UserGoalRecord,
   ScanHistoryRecord,
+  SharedChatRecord,
   WorkoutLogRecord,
 } from "./data/types";
 
@@ -24,6 +25,7 @@ export type {
   FormAnalysisRecord,
   NotificationPreferenceRecord,
   ScanHistoryRecord,
+  SharedChatRecord,
   UserGoalRecord,
   WorkoutLogRecord,
 };
@@ -73,6 +75,9 @@ export const deleteConversation = (userId: string, id: string) => store.deleteCo
 export const renameConversation = (userId: string, id: string, title: string) => store.renameConversation(userId, id, title);
 export const setConversationPinned = (userId: string, id: string, pinned: boolean) =>
   store.setConversationPinned(userId, id, pinned);
+
+export const createShare = (record: Omit<SharedChatRecord, "id">) => store.createShare(record);
+export const getShare = (id: string) => store.getShare(id);
 
 export const saveNotificationPreferences = (record: NotificationPreferenceRecord) =>
   store.saveNotificationPreferences(record);
