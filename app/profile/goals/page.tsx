@@ -248,7 +248,7 @@ export default function GoalsPage() {
             Your profile
           </div>
 
-          <div className="goals-grid2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+          <div className="goals-grid2" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 14, marginBottom: 14 }}>
             <label style={{ display: "block" }}>
               <span className="cl-label">Biological sex</span>
               <select value={form.gender} onChange={(e) => set("gender", e.target.value as Gender)} className="cl-input">
@@ -272,7 +272,7 @@ export default function GoalsPage() {
             </label>
           </div>
 
-          <div className="goals-grid4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 14 }}>
+          <div className="goals-grid4" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 14, marginBottom: 14 }}>
             <label style={{ display: "block" }}>
               <span className="cl-label">
                 Birth date{form.birth_date ? ` (${ageFromBirthDate(form.birth_date)}y)` : ""}
@@ -357,7 +357,7 @@ export default function GoalsPage() {
           <p style={{ fontSize: 13, color: "var(--text-tertiary)", margin: "0 0 16px" }}>
             Fine-tune any number — your dashboard, diet rings and AI use these.
           </p>
-          <div className="goals-grid3" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+          <div className="goals-grid3" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 14 }}>
             {numField("Calories (kcal)", "daily_calories")}
             {numField("Protein (g)", "protein_g")}
             {numField("Carbs (g)", "carbs_g")}
@@ -385,7 +385,7 @@ export default function GoalsPage() {
           </div>
           {/* Structured day-by-day view with muscle symbols */}
           {form.weekly_plan.trim() && (
-            <div className="plan-preview" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 16 }}>
+            <div className="plan-preview" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginBottom: 16 }}>
               {parsePlanPreview(form.weekly_plan).map((day) => (
                 <div
                   key={day.day + day.focus}
@@ -441,13 +441,13 @@ export default function GoalsPage() {
 
         <style jsx>{`
           @media (max-width: 640px) {
-            .plan-preview { grid-template-columns: 1fr !important; }
+            .plan-preview { grid-template-columns: minmax(0, 1fr) !important; }
           }
           @media (max-width: 720px) {
             .goals-wrap { padding: 20px 16px 40px !important; }
-            .goals-grid4 { grid-template-columns: 1fr 1fr !important; }
-            .goals-grid3 { grid-template-columns: 1fr 1fr !important; }
-            .goals-grid2 { grid-template-columns: 1fr !important; }
+            .goals-grid4 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
+            .goals-grid3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
+            .goals-grid2 { grid-template-columns: minmax(0, 1fr) !important; }
           }
         `}</style>
       </div>

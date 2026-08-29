@@ -65,8 +65,22 @@ export default function ShareChatButton({
           /* dismissed — the dialog still has the link */
         }
       }
-    } catch {
-      setError("Couldn't create the link. Check your connection and try again.");
+    } catch (err) {
+      const code = (err as { code?: string })?.code || "";
+      if (code === "permission-denied") {
+        // The /shares rule hasn't reached the project yet. Say so plainly —
+        // "check your connection" would send someone hunting the wrong problem.
+        console.error(
+          "[share] permission denied writing /shares — deploy the rules:\n" +
+            "  firebase deploy --only firestore:rules"
+        );
+        setError("Sharing isn't switched on for this site yet. If it's yours, deploy the Firestore rules.");
+      } else if (code === "unauthenticated") {
+        setError("Your session expired — sign in again, then share.");
+      } else {
+        console.error("[share] create failed", err);
+        setError("Couldn't create the link. Check your connection and try again.");
+      }
     } finally {
       setBusy(false);
     }

@@ -351,7 +351,7 @@ export default function ProfilePage() {
           align-items: start;
         }
         @media (max-width: 860px) {
-          .profile-grid { grid-template-columns: 1fr; }
+          .profile-grid { grid-template-columns: minmax(0, 1fr); }
         }
       `}</style>
     </AppLayout>

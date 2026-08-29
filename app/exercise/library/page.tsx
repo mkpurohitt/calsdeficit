@@ -86,9 +86,9 @@ export default function MuscleLibraryPage() {
   return (
     <AppLayout>
       <style>{`
-        .lib-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
-        @media (max-width: 1180px) { .lib-grid { grid-template-columns: 1fr 1fr; } }
-        @media (max-width: 720px) { .lib-grid { grid-template-columns: 1fr; } }
+        .lib-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+        @media (max-width: 1180px) { .lib-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+        @media (max-width: 720px) { .lib-grid { grid-template-columns: minmax(0, 1fr); } }
         .lib-head { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
         @media (max-width: 860px) {
           .lib-wrap { padding: 20px 16px 40px !important; }

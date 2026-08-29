@@ -323,7 +323,7 @@ export default function ExercisePage() {
       <style>{`
         .ex-cols2 { display: grid; grid-template-columns: minmax(0,1fr) 336px; gap: 20px; align-items: start; }
         @media (max-width: 860px) {
-          .ex-cols2 { grid-template-columns: 1fr; }
+          .ex-cols2 { grid-template-columns: minmax(0, 1fr); }
           .ex-wrap { padding: 14px 14px 24px !important; }
           .ex-form-hero { flex-wrap: nowrap !important; padding: 14px 16px !important; gap: 12px !important; margin-bottom: 14px !important; }
           .ex-form-hero .ex-form-icon { width: 40px !important; height: 40px !important; border-radius: 12px !important; }
@@ -336,7 +336,7 @@ export default function ExercisePage() {
           .ex-header h1 { font-size: 24px !important; }
         }
         @media (max-width: 640px) {
-          .plan-tiles { grid-template-columns: repeat(2, 1fr) !important; }
+          .plan-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
         }
       `}</style>
       <div className="ex-wrap" style={{ padding: "30px 38px 48px", maxWidth: 1380, margin: "0 auto" }}>
@@ -624,7 +624,7 @@ export default function ExercisePage() {
                   {dayPlan.items.map((item) => item.raw).join(" · ") || "Rest & recovery day."}
                 </div>
               ) : (
-                <div className="plan-tiles" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                <div className="plan-tiles" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
                   {dayPlan.items.map((item) => {
                     const done = isPlanItemDone(item);
                     const busy = planBusy === item.raw;
@@ -735,7 +735,7 @@ export default function ExercisePage() {
                 <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 16 }}>
                   Every exercise, by muscle group &amp; equipment.
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)", gap: 8, marginBottom: 16 }}>
                   {topGroups.length === 0 &&
                     Array.from({ length: 6 }).map((_, index) => (
                       <div key={index} style={{ background: "var(--surface-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 11, padding: "10px 6px", textAlign: "center", minHeight: 48 }} />

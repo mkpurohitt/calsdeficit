@@ -566,11 +566,11 @@ img, video, svg, canvas {
    single full-width form on small screens. */
 .cl-auth {
   display: grid;
-  grid-template-columns: 1.04fr 1fr;
+  grid-template-columns: minmax(0, 1.04fr) minmax(0, 1fr);
   min-height: var(--app-vh);
 }
 @media (max-width: 860px) {
-  .cl-auth { grid-template-columns: 1fr !important; }
+  .cl-auth { grid-template-columns: minmax(0, 1fr) !important; }
   .cl-brand { display: none !important; }
   .cl-authpad { padding: 40px 22px !important; }
 }

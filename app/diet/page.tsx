@@ -808,7 +808,7 @@ export default function DietPage() {
                   {totalWaterMl.toLocaleString()} / {waterGoal.toLocaleString()} ml
                 </span>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 7, marginBottom: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(8, minmax(0, 1fr))", gap: 7, marginBottom: 16 }}>
                 {Array.from({ length: 8 }).map((_, i) => {
                   const filled = i < waterGlasses;
                   return (
@@ -1219,7 +1219,7 @@ export default function DietPage() {
         }
         @media (max-width: 860px) {
           .diet-cols {
-            grid-template-columns: 1fr;
+            grid-template-columns: minmax(0, 1fr);
           }
         }
         /* ── Food scanner modal ──────────────────────────────────────────── */

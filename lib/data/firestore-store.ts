@@ -36,6 +36,23 @@ function sub(userId: string, name: string) {
   return collection(db, "users", userId, name);
 }
 
+/**
+ * Firestore rejects `undefined` anywhere in a document. Message payloads carry
+ * nested AI cards whose optional fields are often absent, so drop them before
+ * writing rather than letting one missing macro fail the whole save.
+ */
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(stripUndefined) as unknown as T;
+  if (value && typeof value === "object" && !(value instanceof Date)) {
+    const out: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      if (val !== undefined) out[key] = stripUndefined(val);
+    }
+    return out as T;
+  }
+  return value;
+}
+
 export const firestoreStore: UserDataStore = {
   async saveUserGoal(goal: UserGoalRecord) {
     try {
@@ -326,13 +343,11 @@ export const firestoreStore: UserDataStore = {
   // rules make it world-readable, and nesting it under /users would mean
   // punching a public hole in a subtree that is otherwise owner-only.
   async createShare(record: Omit<SharedChatRecord, "id">) {
-    try {
-      const ref = await addDoc(collection(db, "shares"), record);
-      return ref.id;
-    } catch (error) {
-      console.error("Error creating share:", error);
-      return null;
-    }
+    // Rethrows rather than swallowing: the caller shows the reason to the user,
+    // and "permission denied" (rules not deployed) needs a different message
+    // from "you're offline".
+    const ref = await addDoc(collection(db, "shares"), stripUndefined(record));
+    return ref.id;
   },
 
   async getShare(id: string) {

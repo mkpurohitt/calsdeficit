@@ -43,7 +43,11 @@ export interface UserDataStore {
   renameConversation(userId: string, id: string, title: string): Promise<void>;
   setConversationPinned(userId: string, id: string, pinned: boolean): Promise<void>;
 
-  /** Publishes a read-only snapshot; resolves to its share id, or null on failure. */
+  /**
+   * Publishes a read-only snapshot and resolves to its share id. Unlike the
+   * other writes this one rejects on failure, so the caller can tell the user
+   * whether sharing is switched off or the network is down.
+   */
   createShare(record: Omit<SharedChatRecord, "id">): Promise<string | null>;
   /** Reads a shared snapshot. Callable while signed out — that is the point. */
   getShare(id: string): Promise<SharedChatRecord | null>;

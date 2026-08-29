@@ -333,7 +333,7 @@ export default function OnboardingPage() {
 
         {step === "gender" && (
           <StepShell title="What's your biological sex?" subtitle="It sets the calorie formula (Mifflin-St Jeor).">
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, width: "100%", maxWidth: 460 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 14, width: "100%", maxWidth: 460 }}>
               {([["male", "Male", Mars], ["female", "Female", Venus]] as const).map(([val, label, Icon], i) => (
                 <button
                   key={val}
@@ -557,7 +557,7 @@ export default function OnboardingPage() {
 
         {step === "days" && (
           <StepShell title="How many days can you train?" subtitle="Your weekly split is built around this.">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, width: "100%", maxWidth: 460 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, width: "100%", maxWidth: 460 }}>
               {[2, 3, 4, 5, 6, 7].map((d, i) => (
                 <button
                   key={d}
@@ -733,7 +733,7 @@ export default function OnboardingPage() {
             </div>
 
             {/* Macro + lifestyle tiles */}
-            <div className="ob-tiles ob-option" style={{ animationDelay: "150ms", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 14 }}>
+            <div className="ob-tiles ob-option" style={{ animationDelay: "150ms", display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginBottom: 14 }}>
               <Tile color="var(--macro-protein)" label="Protein" value={`${plan.protein_g}g`} icon={<Dumbbell size={15} />} />
               <Tile color="var(--macro-carbs)" label="Carbs" value={`${plan.carbs_g}g`} icon={<Flame size={15} />} />
               <Tile color="var(--macro-fat)" label="Fat" value={`${plan.fat_g}g`} icon={<Scale size={15} />} />
@@ -748,7 +748,7 @@ export default function OnboardingPage() {
               style={{ animationDelay: "220ms", background: "var(--surface-card)", border: "1px solid var(--border-color)", borderRadius: 18, padding: "20px 22px", marginBottom: 14 }}
             >
               <div className="cl-disp" style={{ fontWeight: 700, fontSize: 16, marginBottom: 12 }}>Calories by meal</div>
-              <div className="ob-meals" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+              <div className="ob-meals" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
                 <MealTile icon={<Sun size={15} />} label="Breakfast" kcal={plan.meal_targets.breakfast} />
                 <MealTile icon={<Flame size={15} />} label="Lunch" kcal={plan.meal_targets.lunch} />
                 <MealTile icon={<Moon size={15} />} label="Dinner" kcal={plan.meal_targets.dinner} />
@@ -884,8 +884,8 @@ export default function OnboardingPage() {
           .ob-brandname { display: none; }
           .ob-body { padding: 12px 16px 24px !important; justify-content: flex-start !important; padding-top: 5vh !important; }
           .ob-title-xl { font-size: 30px !important; }
-          .ob-tiles { grid-template-columns: repeat(2, 1fr) !important; }
-          .ob-meals { grid-template-columns: repeat(2, 1fr) !important; }
+          .ob-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+          .ob-meals { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
           .ob-controls { padding: 0 16px calc(20px + env(safe-area-inset-bottom, 0px)) !important; position: sticky; bottom: 0; background: linear-gradient(transparent, var(--bg-app) 35%); padding-top: 14px !important; }
           .ob-controls .btn-primary { flex: 1; min-width: 0 !important; }
         }

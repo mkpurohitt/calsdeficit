@@ -1146,7 +1146,7 @@ function Dashboard() {
             padding: 10px 12px 12px !important;
           }
           .cl-home-grid {
-            grid-template-columns: 1fr;
+            grid-template-columns: minmax(0, 1fr);
           }
           /* Today's numbers live on the Diet tab — the phone home screen stays
              a clean chat surface instead of a wall of stats. */
