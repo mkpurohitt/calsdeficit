@@ -15,6 +15,7 @@ import { compressImage, fileToBase64, makeImageThumb, MAX_VIDEO_BYTES } from "..
 import type { FoodScanResult } from "../lib/schemas/food-scan";
 import { getFoodLogs, getUserGoal, getDay, getDateKey, addFoodLog, addScanHistory, deleteScanHistory, saveWorkoutLog, saveConversation, getConversation } from "../lib/user-data";
 import { STEP_GOAL } from "../lib/config/app";
+import { formatKm, stepsToKm } from "../lib/plan";
 
 /** Compact text form of a message so the AI gets prior-turn context. */
 function toHistoryText(m: Message): string {
@@ -31,6 +32,8 @@ interface DailyStats {
   steps: number;
   stepGoal: number;
   hasGoal: boolean;
+  /** Needed to turn a step count into a distance (stride ≈ 41.5% of height). */
+  heightCm: number;
 }
 
 interface WorkoutParse {
@@ -318,10 +321,11 @@ function Dashboard() {
         steps: day?.steps || 0,
         stepGoal: goal?.step_goal || STEP_GOAL,
         hasGoal: Boolean(goal?.daily_calories),
+        heightCm: goal?.height_cm || 170,
       });
     } catch (error) {
       console.error("[home] stats load failed", error);
-      setStats({ consumed: 0, calorieGoal: 0, protein: 0, proteinGoal: 0, steps: 0, stepGoal: STEP_GOAL, hasGoal: false });
+      setStats({ consumed: 0, calorieGoal: 0, protein: 0, proteinGoal: 0, steps: 0, stepGoal: STEP_GOAL, hasGoal: false, heightCm: 170 });
     }
   }, [user, router]);
 
@@ -1026,7 +1030,14 @@ function Dashboard() {
                   <div aria-disabled="true" style={{ userSelect: "none" }}>
                     <div style={{ opacity: 0.45, filter: "grayscale(1)", pointerEvents: "none" }}>
                       <div className="flex" style={{ justifyContent: "space-between", fontSize: 12, color: "var(--text-secondary)", marginBottom: 5 }}>
-                        <span>Steps</span>
+                        <span>
+                          Steps
+                          {/* Distance is derived from the user's own height,
+                              so the same goal reads differently per person. */}
+                          <span style={{ color: "var(--text-tertiary)", marginLeft: 6 }}>
+                            {formatKm(stepsToKm(stats?.stepGoal ?? STEP_GOAL, stats?.heightCm ?? 170))}
+                          </span>
+                        </span>
                         <span className="cl-mono">{(stats?.steps || 0).toLocaleString()} / {(stats?.stepGoal ?? STEP_GOAL).toLocaleString()}</span>
                       </div>
                       <div style={{ height: 6, background: "var(--surface-elevated)", borderRadius: 99, overflow: "hidden" }}>

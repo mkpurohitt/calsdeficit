@@ -189,6 +189,33 @@ export interface ExerciseQuery {
   limit?: number;
 }
 
+/**
+ * The catalogue is a merge of several datasets that name the same muscle
+ * differently — free-exercise-db says "Chest"/"Abdominals"/"Quadriceps",
+ * ExerciseDB says "pectorals"/"abs"/"quads", wger says "Shoulders". A UI filter
+ * therefore has to match a *set* of spellings, not one; matching only the
+ * ExerciseDB name is why the library came back empty for most groups.
+ *
+ * Keys are the filter names the UI sends; values are substrings matched
+ * case-insensitively against both muscle_group and body_part.
+ */
+export const MUSCLE_GROUP_SYNONYMS: Record<string, string[]> = {
+  chest: ["chest", "pectoral", "serratus"],
+  back: ["back", "lat", "trap", "rhomboid", "erector", "spine"],
+  legs: ["leg", "quad", "hamstring", "glute", "calf", "calv", "thigh", "adductor", "abductor"],
+  arms: ["arm", "bicep", "tricep", "forearm"],
+  shoulders: ["shoulder", "delt", "rotator"],
+  core: ["abdominal", "abs", "core", "oblique", "waist"],
+};
+
+/** Expands a UI filter name to every spelling the catalogue might use. */
+export function expandMuscleFilter(value: string): string[] {
+  const key = value.trim().toLowerCase();
+  if (MUSCLE_GROUP_SYNONYMS[key]) return MUSCLE_GROUP_SYNONYMS[key];
+  // Not a known group — treat it as a literal substring (free-text muscle).
+  return key ? [key] : [];
+}
+
 export async function findExercises({ id, query, muscles, limit = 10 }: ExerciseQuery): Promise<ExerciseRecord[]> {
   if (isCloudSqlConfigured()) {
     try {
@@ -207,8 +234,13 @@ export async function findExercises({ id, query, muscles, limit = 10 }: Exercise
         conditions.push(`name ILIKE $${params.length}`);
       }
       if (muscles && muscles.length > 0) {
+        // body_part carries the coarse region ("upper legs") where
+        // muscle_group carries the specific head, so a group filter has to
+        // consider both or half the catalogue is unreachable.
         params.push(muscles.map((m) => `%${m}%`));
-        conditions.push(`muscle_group ILIKE ANY($${params.length})`);
+        conditions.push(
+          `(muscle_group ILIKE ANY($${params.length}) OR COALESCE(body_part,'') ILIKE ANY($${params.length}))`
+        );
       }
       params.push(limit);
       const rows = await sql<ExerciseRecord>(

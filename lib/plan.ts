@@ -18,6 +18,38 @@ export interface PlanInput {
   goal_weight_kg?: number;
   goal: GoalType;
   activity_level: ActivityLevel;
+  /** How many weeks the user wants to take to reach goal_weight_kg. */
+  timeframe_weeks?: number;
+}
+
+/** Energy in 1 kg of body mass — the standard 7,700 kcal figure. */
+export const KCAL_PER_KG = 7700;
+
+/**
+ * Safe weekly rates of change. Losing faster than ~1% of bodyweight a week
+ * costs lean mass and is rarely sustained; gaining faster than ~0.35 kg/week is
+ * mostly fat. A requested pace beyond these is honoured only up to the cap, and
+ * the plan reports the realistic finish date instead of silently obeying.
+ */
+export const MAX_LOSS_FRACTION_PER_WEEK = 0.01;
+export const MAX_LOSS_KG_PER_WEEK = 1.0;
+export const MAX_GAIN_KG_PER_WEEK = 0.35;
+
+export type Pace = "gentle" | "steady" | "ambitious" | "capped";
+
+/** How the requested timeframe was reconciled with what's safe. */
+export interface Timeline {
+  /** Weeks the user asked for (0 when they didn't say). */
+  requested_weeks: number;
+  /** kg/week actually planned for, after clamping. */
+  weekly_rate_kg: number;
+  /** Weeks it will realistically take at that rate. */
+  projected_weeks: number;
+  /** True when the request was faster than is safe and had to be slowed. */
+  capped: boolean;
+  pace: Pace;
+  /** Daily calorie delta from TDEE implied by weekly_rate_kg. */
+  daily_delta_kcal: number;
 }
 
 /** Per-meal calorie targets derived from the daily total. */
@@ -39,6 +71,8 @@ export interface PlanResult {
   step_goal: number;
   water_ml: number;
   meal_targets: MealTargets;
+  /** Present when a goal weight and a timeframe were both supplied. */
+  timeline?: Timeline;
 }
 
 /* ── Unit conversions (canonical storage is metric) ────────────────────── */
@@ -91,6 +125,45 @@ export const ACTIVITY_LABELS: Record<ActivityLevel, { label: string; desc: strin
   very_active: { label: "Athlete", desc: "Twice-daily training / physical job" },
 };
 
+/**
+ * Reconciles "I want to lose 8 kg in 10 weeks" with what's physiologically
+ * safe, and reports the daily calorie delta that implies. Returns null when
+ * there's nothing to plan against (no goal weight, no timeframe, or already
+ * at target).
+ */
+export function computeTimeline(input: PlanInput): Timeline | null {
+  const { weight_kg, goal_weight_kg, goal, timeframe_weeks } = input;
+  if (goal === "Maintain Weight") return null;
+  if (!goal_weight_kg || !timeframe_weeks || timeframe_weeks <= 0) return null;
+
+  const losing = goal === "Lose Weight";
+  const delta_kg = Math.abs(weight_kg - goal_weight_kg);
+  if (delta_kg < 0.5) return null;
+
+  const requested_rate = delta_kg / timeframe_weeks;
+  const cap = losing
+    ? Math.min(MAX_LOSS_KG_PER_WEEK, weight_kg * MAX_LOSS_FRACTION_PER_WEEK)
+    : MAX_GAIN_KG_PER_WEEK;
+
+  const weekly_rate_kg = Math.min(requested_rate, cap);
+  const capped = requested_rate > cap + 0.001;
+  const projected_weeks = Math.ceil(delta_kg / weekly_rate_kg);
+
+  // Fraction of the safe cap this pace uses — a stable way to describe effort
+  // regardless of bodyweight.
+  const intensity = weekly_rate_kg / cap;
+  const pace: Pace = capped ? "capped" : intensity > 0.75 ? "ambitious" : intensity > 0.4 ? "steady" : "gentle";
+
+  return {
+    requested_weeks: timeframe_weeks,
+    weekly_rate_kg: Math.round(weekly_rate_kg * 100) / 100,
+    projected_weeks,
+    capped,
+    pace,
+    daily_delta_kcal: Math.round((weekly_rate_kg * KCAL_PER_KG) / 7),
+  };
+}
+
 export function calculatePlan(input: PlanInput): PlanResult {
   const { gender, age, height_cm, weight_kg, goal, activity_level } = input;
 
@@ -98,10 +171,21 @@ export function calculatePlan(input: PlanInput): PlanResult {
   const bmr = Math.round(10 * weight_kg + 6.25 * height_cm - 5 * age + (gender === "male" ? 5 : -161));
   const tdee = Math.round(bmr * ACTIVITY_MULTIPLIERS[activity_level]);
 
-  // Goal adjustment: moderate, sustainable deficit/surplus
+  // Goal adjustment. With a target date the deficit/surplus is derived from the
+  // pace the user asked for (clamped to what's safe); without one it falls back
+  // to the standard moderate 500 kcal deficit / 300 kcal surplus.
+  const timeline = computeTimeline(input);
+  const floor = gender === "male" ? 1500 : 1200;
+
   let daily_calories = tdee;
-  if (goal === "Lose Weight") daily_calories = Math.max(Math.round(tdee - 500), gender === "male" ? 1500 : 1200);
-  if (goal === "Gain Muscle") daily_calories = Math.round(tdee + 300);
+  if (goal === "Lose Weight") {
+    const deficit = timeline ? timeline.daily_delta_kcal : 500;
+    daily_calories = Math.max(Math.round(tdee - deficit), floor);
+  }
+  if (goal === "Gain Muscle") {
+    const surplus = timeline ? timeline.daily_delta_kcal : 300;
+    daily_calories = Math.round(tdee + surplus);
+  }
 
   // Protein by goal (g per kg bodyweight): cutting needs more to retain muscle
   const proteinPerKg = goal === "Lose Weight" ? 2.0 : goal === "Gain Muscle" ? 1.8 : 1.6;
@@ -128,7 +212,46 @@ export function calculatePlan(input: PlanInput): PlanResult {
     snacks: Math.round(daily_calories * 0.1),
   };
 
-  return { bmr, tdee, daily_calories, protein_g, carbs_g, fat_g, fiber_g, step_goal, water_ml, meal_targets };
+  return {
+    bmr,
+    tdee,
+    daily_calories,
+    protein_g,
+    carbs_g,
+    fat_g,
+    fiber_g,
+    step_goal,
+    water_ml,
+    meal_targets,
+    ...(timeline ? { timeline } : {}),
+  };
+}
+
+/* ── Steps → distance ───────────────────────────────────────────────────── */
+
+/**
+ * Walking stride is close to a fixed fraction of height, so a step count means
+ * a different distance for different people — which is the whole point of
+ * asking for height. 0.415 is the standard male ratio, 0.413 female; the
+ * difference is under a percent, so one constant is honest enough here.
+ */
+export const STRIDE_HEIGHT_RATIO = 0.415;
+
+export function strideMetres(height_cm: number): number {
+  // Guard against an unset/absurd height rather than returning 0 km.
+  const cm = height_cm >= 120 && height_cm <= 230 ? height_cm : 170;
+  return (cm * STRIDE_HEIGHT_RATIO) / 100;
+}
+
+export function stepsToKm(steps: number, height_cm: number): number {
+  if (!steps || steps < 0) return 0;
+  return (steps * strideMetres(height_cm)) / 1000;
+}
+
+/** "3.2 km" — one decimal under 10 km, whole numbers above. */
+export function formatKm(km: number): string {
+  if (km <= 0) return "0 km";
+  return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`;
 }
 
 /**
@@ -214,6 +337,19 @@ export const DIETARY_PREFERENCES = [
   "Vegan",
   "Jain",
 ] as const;
+
+/**
+ * What each label actually rules in or out. These words mean different things
+ * in different places — "vegetarian" includes eggs in much of the West but not
+ * in India — so the UI spells the boundary out rather than assuming.
+ */
+export const DIETARY_PREFERENCE_NOTES: Record<string, string> = {
+  Vegetarian: "No meat, fish or eggs. Milk, curd, paneer and ghee are fine.",
+  Eggetarian: "Vegetarian plus eggs. No meat or fish.",
+  "Non-vegetarian": "Everything — meat, fish, eggs and dairy.",
+  Vegan: "No animal products at all: no dairy, eggs, honey or ghee.",
+  Jain: "Vegetarian, and no onion, garlic, potato or other root vegetables.",
+};
 
 export const COMMON_ALLERGIES = [
   "Milk / lactose",

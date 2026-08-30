@@ -19,6 +19,18 @@ export interface AiUserContext {
   goal_weight_kg?: number;
   activity_level?: string;
   workout_days?: number;
+  /** Deadline the user set for the goal weight, and the pace it implies. */
+  timeframe_weeks?: number;
+  timeline?: {
+    weekly_rate_kg?: number;
+    projected_weeks?: number;
+    capped?: boolean;
+    daily_delta_kcal?: number;
+  };
+  step_goal?: number;
+  water_ml?: number;
+  /** Set when the profile was skipped — the numbers are a rough baseline. */
+  needs_profile?: boolean;
   daily_calories?: number;
   protein_g?: number;
   carbs_g?: number;
@@ -63,6 +75,20 @@ export function describeUserContext(ctx: AiUserContext | null): string {
   if (ctx.goal) {
     bits.push(`Goal: ${ctx.goal}${ctx.goal_weight_kg ? ` (target ${ctx.goal_weight_kg}kg)` : ""}`);
   }
+  // The deadline is what makes advice concrete — "you have 9 weeks left" beats
+  // "keep at it", and it lets the model sanity-check requests against the pace.
+  if (ctx.timeline?.weekly_rate_kg) {
+    bits.push(
+      `Pace: ${ctx.timeline.weekly_rate_kg}kg/week` +
+        (ctx.timeline.projected_weeks ? `, ~${ctx.timeline.projected_weeks} weeks to target` : "") +
+        (ctx.timeline.capped ? " (their requested deadline was faster than is safe — never encourage speeding it up)" : "")
+    );
+  } else if (ctx.timeframe_weeks) {
+    bits.push(`Wants to reach the target in ~${ctx.timeframe_weeks} weeks`);
+  }
+  if (ctx.step_goal) {
+    bits.push(`Daily step goal: ${ctx.step_goal.toLocaleString()}`);
+  }
   if (ctx.daily_calories) {
     bits.push(
       `Daily targets: ${ctx.daily_calories} kcal` +
@@ -78,7 +104,12 @@ export function describeUserContext(ctx: AiUserContext | null): string {
   if (ctx.health_notes) bits.push(`Notes: ${String(ctx.health_notes).slice(0, 300)}`);
 
   if (!bits.length) return "";
-  return `\n\nABOUT THIS USER (tailor every answer to it; never repeat it back verbatim):\n${bits.map((b) => `- ${b}`).join("\n")}`;
+  // A skipped profile means these numbers are population averages, not theirs —
+  // the model should say so rather than presenting them with false confidence.
+  const caveat = ctx.needs_profile
+    ? "\nNOTE: this user skipped the profile setup, so the body stats and targets above are rough defaults. Where a number really matters, say it's an estimate and invite them to finish their profile."
+    : "";
+  return `\n\nABOUT THIS USER (tailor every answer to it; never repeat it back verbatim):\n${bits.map((b) => `- ${b}`).join("\n")}${caveat}`;
 }
 
 /**

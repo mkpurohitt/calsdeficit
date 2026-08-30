@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { countExercises, findExercises } from '../../../lib/server/exercise-db';
+import { countExercises, expandMuscleFilter, findExercises } from '../../../lib/server/exercise-db';
 
 export const runtime = 'nodejs';
 
@@ -31,9 +31,15 @@ export async function GET(req: Request) {
       ? Math.min(limitParam, 200)
       : query || muscle ? 15 : 10;
 
+    // `muscle` is a UI group name ("chest") or a comma-separated list; each is
+    // expanded to every spelling the merged catalogue uses for it.
+    const muscles = muscle
+      ? muscle.split(",").flatMap((m) => expandMuscleFilter(m))
+      : undefined;
+
     const data = await findExercises({
       query: query || undefined,
-      muscles: muscle ? [muscle] : undefined,
+      muscles: muscles?.length ? muscles : undefined,
       limit,
     });
     return NextResponse.json({ success: true, data });

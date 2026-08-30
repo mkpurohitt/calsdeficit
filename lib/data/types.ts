@@ -8,6 +8,18 @@ export interface UserGoalRecord {
   protein_g: number;
   carbs_g: number;
   fat_g: number;
+  /** Weeks the user chose to reach goal_weight_kg — drives the deficit size. */
+  timeframe_weeks?: number;
+  /** The pace that timeframe implies, after clamping to a safe rate. */
+  timeline?: {
+    requested_weeks: number;
+    weekly_rate_kg: number;
+    projected_weeks: number;
+    capped: boolean;
+    daily_delta_kcal: number;
+  };
+  /** True when the profile was skipped and the numbers are a rough baseline. */
+  needs_profile?: boolean;
   /* Extended profile captured by onboarding (optional — older records lack them) */
   gender?: "male" | "female";
   activity_level?: "sedentary" | "light" | "moderate" | "active" | "very_active";

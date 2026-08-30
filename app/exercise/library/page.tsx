@@ -19,15 +19,10 @@ interface ExerciseItem {
   met_value?: number | null;
 }
 
+// The filter name goes to the API as-is; the server owns the mapping from a
+// group to the several spellings the merged catalogue uses for it, so the two
+// can't drift apart the way a client-side map did.
 const FILTERS = ["All", "Chest", "Back", "Legs", "Arms", "Shoulders", "Core"] as const;
-const muscleQueryMap: Record<string, string> = {
-  Chest: "pectorals",
-  Back: "lats",
-  Legs: "quads",
-  Arms: "biceps",
-  Shoulders: "delts",
-  Core: "abs",
-};
 
 export default function MuscleLibraryPage() {
   const [exercises, setExercises] = useState<ExerciseItem[]>([]);
@@ -56,7 +51,7 @@ export default function MuscleLibraryPage() {
     try {
       const params = new URLSearchParams();
       if (query) params.append("query", query);
-      if (filter !== "All") params.append("muscle", muscleQueryMap[filter] || filter.toLowerCase());
+      if (filter !== "All") params.append("muscle", filter.toLowerCase());
       params.append("limit", "60");
       const res = await fetch(`/api/exercises?${params.toString()}`);
       const json = await res.json();

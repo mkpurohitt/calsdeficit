@@ -8,13 +8,17 @@ import {
   ACTIVITY_LABELS,
   ageFromBirthDate,
   calculatePlan,
+  computeTimeline,
   cmToFtIn,
   ftInToCm,
   kgToLbs,
   lbsToKg,
   templateWeeklyPlan,
+  stepsToKm,
+  formatKm,
   HEALTH_CONDITIONS,
   DIETARY_PREFERENCES,
+  DIETARY_PREFERENCE_NOTES,
   COMMON_ALLERGIES,
   type ActivityLevel,
   type Gender,
@@ -24,6 +28,8 @@ import {
   type WeightUnit,
 } from "../../lib/plan";
 import { BrandMark } from "../../components/AppLayout";
+import BirthDateInput from "../../components/BirthDateInput";
+import { DietPlanCards, WeeklySplitCards, parsePlanLines } from "../../components/PlanCards";
 import ReactMarkdown from "react-markdown";
 import {
   ArrowLeft,
@@ -49,6 +55,11 @@ import {
   TrendingUp,
   Venus,
   Droplet,
+  Info,
+  Plus,
+  X,
+  Clock,
+  SkipForward,
 } from "lucide-react";
 
 type StepKey =
@@ -59,6 +70,7 @@ type StepKey =
   | "weight"
   | "goal"
   | "goalWeight"
+  | "timeframe"
   | "activity"
   | "days"
   | "health"
@@ -66,7 +78,30 @@ type StepKey =
   | "building"
   | "results";
 
-const QUESTION_STEPS: StepKey[] = ["gender", "birthdate", "height", "weight", "goal", "goalWeight", "activity", "days", "health", "diet"];
+const QUESTION_STEPS: StepKey[] = ["gender", "birthdate", "height", "weight", "goal", "goalWeight", "timeframe", "activity", "days", "health", "diet"];
+
+/**
+ * The wizard holds ten answers in memory and only writes them at the very end,
+ * so anything that remounts the page — a reload, a slow "building" step the
+ * user tabs away from and the phone browser then discards, an auth re-init —
+ * used to drop them back at step one with nothing saved. Mirroring progress to
+ * localStorage on every change makes a remount resume instead of restart.
+ */
+const DRAFT_KEY = "calolean_onboarding_draft";
+/** Beyond this a draft is stale enough that resuming would be confusing. */
+const DRAFT_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7;
+/** The plan endpoint calls a model; without a ceiling a hang strands the user
+ *  on the "Building your plan…" spinner indefinitely. */
+const PLAN_TIMEOUT_MS = 25000;
+
+/** Deadlines people actually think in, mapped to weeks for the maths. */
+const TIMEFRAME_OPTIONS = [
+  { label: "In 1 month", weeks: 4, desc: "Fastest — only realistic for a small change" },
+  { label: "In 2 months", weeks: 9, desc: "Focused push" },
+  { label: "In 3 months", weeks: 13, desc: "The usual sweet spot" },
+  { label: "In 6 months", weeks: 26, desc: "Gradual and easy to hold" },
+  { label: "In a year", weeks: 52, desc: "Slow, permanent change" },
+] as const;
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -93,6 +128,12 @@ export default function OnboardingPage() {
   const [healthNotes, setHealthNotes] = useState("");
   const [dietaryPreference, setDietaryPreference] = useState<string | null>(null);
   const [allergies, setAllergies] = useState<string[]>([]);
+  /** Weeks the user wants to take to reach the goal weight (null = no rush). */
+  const [timeframeWeeks, setTimeframeWeeks] = useState<number | null>(null);
+  /** Draft restored from a previous session — gates the auto-save so an empty
+   *  first render can't wipe a good draft before it loads. */
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [skipping, setSkipping] = useState(false);
 
   const [plan, setPlan] = useState<PlanResult | null>(null);
   const [weeklyPlan, setWeeklyPlan] = useState<string>("");
@@ -101,6 +142,80 @@ export default function OnboardingPage() {
   const [error, setError] = useState<string | null>(null);
 
   const age = birthDate ? ageFromBirthDate(birthDate) : 0;
+
+  /** What the chosen deadline implies — recomputed as the user picks. */
+  const timeframePreview = useMemo(
+    () =>
+      goal && timeframeWeeks
+        ? computeTimeline({
+            gender: gender ?? "male",
+            age,
+            height_cm: heightCm,
+            weight_kg: weightKg,
+            goal,
+            activity_level: activity ?? "moderate",
+            goal_weight_kg: goalWeightKg ?? undefined,
+            timeframe_weeks: timeframeWeeks,
+          })
+        : null,
+    [goal, timeframeWeeks, gender, age, heightCm, weightKg, activity, goalWeightKg]
+  );
+
+  // Restore an interrupted run before anything else paints.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const d = JSON.parse(raw) as Record<string, unknown> & { saved_at?: number };
+        if (d.saved_at && Date.now() - d.saved_at < DRAFT_MAX_AGE_MS) {
+          if (d.gender) setGender(d.gender as Gender);
+          if (d.birthDate) setBirthDate(d.birthDate as string);
+          if (d.heightUnit) setHeightUnit(d.heightUnit as HeightUnit);
+          if (typeof d.heightCm === "number") setHeightCm(d.heightCm);
+          if (d.weightUnit) setWeightUnit(d.weightUnit as WeightUnit);
+          if (typeof d.weightKg === "number") setWeightKg(d.weightKg);
+          if (d.goal) setGoal(d.goal as GoalType);
+          if (typeof d.goalWeightKg === "number") setGoalWeightKg(d.goalWeightKg);
+          if (typeof d.timeframeWeeks === "number") setTimeframeWeeks(d.timeframeWeeks);
+          if (d.activity) setActivity(d.activity as ActivityLevel);
+          if (typeof d.workoutDays === "number") setWorkoutDays(d.workoutDays);
+          if (Array.isArray(d.healthConditions)) setHealthConditions(d.healthConditions as string[]);
+          if (typeof d.healthNotes === "string") setHealthNotes(d.healthNotes);
+          if (d.dietaryPreference) setDietaryPreference(d.dietaryPreference as string);
+          if (Array.isArray(d.allergies)) setAllergies(d.allergies as string[]);
+          // "building" is a transient state — resuming into a spinner that no
+          // longer has a request behind it would hang, so rewind one step.
+          if (typeof d.step === "string" && d.step !== "building") setStep(d.step as StepKey);
+          else if (d.step === "building") setStep("diet");
+        } else {
+          window.localStorage.removeItem(DRAFT_KEY);
+        }
+      }
+    } catch {
+      /* a corrupt draft must never block onboarding */
+    }
+    setDraftLoaded(true);
+  }, []);
+
+  // Mirror every answer as it changes.
+  useEffect(() => {
+    if (!draftLoaded) return;
+    try {
+      window.localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({
+          step, gender, birthDate, heightUnit, heightCm, weightUnit, weightKg,
+          goal, goalWeightKg, timeframeWeeks, activity, workoutDays,
+          healthConditions, healthNotes, dietaryPreference, allergies,
+          saved_at: Date.now(),
+        })
+      );
+    } catch {
+      /* private mode / quota — persistence is a nicety, not a requirement */
+    }
+  }, [draftLoaded, step, gender, birthDate, heightUnit, heightCm, weightUnit, weightKg,
+      goal, goalWeightKg, timeframeWeeks, activity, workoutDays,
+      healthConditions, healthNotes, dietaryPreference, allergies]);
 
   // Auth + already-onboarded guards
   useEffect(() => {
@@ -132,6 +247,8 @@ export default function OnboardingPage() {
       case "weight": return weightKg >= 30 && weightKg <= 250;
       case "goal": return goal !== null;
       case "goalWeight": return goal === "Maintain Weight" || (goalWeightKg !== null && goalWeightKg >= 30 && goalWeightKg <= 250);
+      // "No deadline" is a valid answer, so the step never blocks.
+      case "timeframe": return true;
       case "activity": return activity !== null;
       case "days": return workoutDays !== null;
       // Health is optional — "None" is a valid answer, so never block here.
@@ -145,7 +262,9 @@ export default function OnboardingPage() {
     if (!canContinue) return;
     if (step === "welcome") return goTo("gender");
     if (step === "goal" && goal === "Maintain Weight") {
+      // No target weight means no deadline to set either.
       setGoalWeightKg(null);
+      setTimeframeWeeks(null);
       return goTo("activity");
     }
     if (step === "diet") return buildPlan();
@@ -171,14 +290,20 @@ export default function OnboardingPage() {
       goal_weight_kg: goalWeightKg ?? undefined,
       goal,
       activity_level: activity,
+      timeframe_weeks: timeframeWeeks ?? undefined,
     });
     setPlan(computed);
 
     // AI weekly plan + diet plan (graceful template fallback — never blocks the flow)
     let weekly = templateWeeklyPlan(goal, workoutDays);
+    // A hung model call must not leave the user staring at the spinner — after
+    // PLAN_TIMEOUT_MS we abandon the request and ship the template plan.
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), PLAN_TIMEOUT_MS);
     try {
       const res = await apiFetch("/api/plan", {
         method: "POST",
+        signal: abort.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           gender,
@@ -196,13 +321,18 @@ export default function OnboardingPage() {
           allergies,
           health_notes: healthNotes,
           meal_targets: computed.meal_targets,
+          // Lets the model pace the plan to the deadline the user asked for.
+          timeframe_weeks: timeframeWeeks,
+          timeline: computed.timeline,
         }),
       });
       const data = await res.json();
       if (data.success && data.plan) weekly = data.plan;
       if (data.success && data.diet_plan) setDietPlan(data.diet_plan);
     } catch {
-      /* keep template */
+      /* timed out or failed — the template plan is a complete, usable answer */
+    } finally {
+      clearTimeout(timer);
     }
     setWeeklyPlan(weekly);
 
@@ -228,6 +358,18 @@ export default function OnboardingPage() {
         gender,
         activity_level: activity,
         goal_weight_kg: goalWeightKg ?? undefined,
+        timeframe_weeks: timeframeWeeks ?? undefined,
+        ...(plan.timeline
+          ? {
+              timeline: {
+                requested_weeks: plan.timeline.requested_weeks,
+                weekly_rate_kg: plan.timeline.weekly_rate_kg,
+                projected_weeks: plan.timeline.projected_weeks,
+                capped: plan.timeline.capped,
+                daily_delta_kcal: plan.timeline.daily_delta_kcal,
+              },
+            }
+          : {}),
         step_goal: plan.step_goal,
         fiber_g: plan.fiber_g,
         water_ml: plan.water_ml,
@@ -243,11 +385,73 @@ export default function OnboardingPage() {
         allergies,
         health_notes: healthNotes.trim() || undefined,
       });
+      // Saved for real — the resume draft has done its job.
+      try { window.localStorage.removeItem(DRAFT_KEY); } catch { /* noop */ }
       router.push("/");
     } catch (e) {
       console.error("[onboarding] save failed", e);
       setError("Could not save your plan — check your connection and try again.");
       setSaving(false);
+    }
+  };
+
+  /**
+   * Item 2: let people into the app now and finish the profile later.
+   *
+   * Saves a clearly-marked baseline from population averages rather than
+   * nothing, so every screen has real numbers to work with instead of empty
+   * states — and flags the record so the app can keep nudging them to finish.
+   */
+  const skipForNow = async () => {
+    if (!user?.uid || skipping) return;
+    setSkipping(true);
+    setError(null);
+    // Whatever they already answered is kept; the rest falls back to defaults.
+    const g = gender ?? "male";
+    const a = age >= 13 ? age : 30;
+    const baseline = calculatePlan({
+      gender: g,
+      age: a,
+      height_cm: heightCm,
+      weight_kg: weightKg,
+      goal: goal ?? "Maintain Weight",
+      activity_level: activity ?? "moderate",
+      goal_weight_kg: goalWeightKg ?? undefined,
+      timeframe_weeks: timeframeWeeks ?? undefined,
+    });
+    try {
+      await saveUserGoal({
+        user_id: user.uid,
+        age: a,
+        gender: g,
+        weight_kg: weightKg,
+        height_cm: heightCm,
+        goal: goal ?? "Maintain Weight",
+        activity_level: activity ?? "moderate",
+        daily_calories: baseline.daily_calories,
+        protein_g: baseline.protein_g,
+        carbs_g: baseline.carbs_g,
+        fat_g: baseline.fat_g,
+        fiber_g: baseline.fiber_g,
+        step_goal: baseline.step_goal,
+        water_ml: baseline.water_ml,
+        meal_targets: baseline.meal_targets,
+        height_unit: heightUnit,
+        weight_unit: weightUnit,
+        ...(birthDate ? { birth_date: birthDate } : {}),
+        ...(workoutDays !== null ? { workout_days: workoutDays } : {}),
+        ...(dietaryPreference ? { dietary_preference: dietaryPreference } : {}),
+        ...(healthConditions.length ? { health_conditions: healthConditions } : {}),
+        ...(allergies.length ? { allergies } : {}),
+        // The app reads this to keep offering "finish your profile".
+        needs_profile: true,
+      });
+      try { window.localStorage.removeItem(DRAFT_KEY); } catch { /* noop */ }
+      router.push("/");
+    } catch (e) {
+      console.error("[onboarding] skip failed", e);
+      setError("Could not skip right now — check your connection and try again.");
+      setSkipping(false);
     }
   };
 
@@ -289,7 +493,21 @@ export default function OnboardingPage() {
         <div style={{ flex: 1, height: 6, background: "var(--surface-elevated)", borderRadius: 99, overflow: "hidden", maxWidth: 420, margin: "0 auto" }}>
           <div style={{ height: "100%", width: `${progress}%`, background: "var(--lime-400)", borderRadius: 99, transition: "width .5s cubic-bezier(.34,1.2,.64,1)" }} />
         </div>
-        <span className="ob-topspacer" style={{ width: 106 }} />
+        {/* Item 2: an escape hatch at every step, not just the first. Anyone
+            who'd rather explore first gets a usable baseline immediately. */}
+        {step !== "building" && step !== "results" ? (
+          <button
+            onClick={skipForNow}
+            disabled={skipping}
+            className="ob-skip"
+            title="Set this up later in Profile"
+          >
+            {skipping ? <Loader2 size={13} className="animate-spin" /> : <SkipForward size={13} />}
+            {skipping ? "Skipping…" : "Skip for now"}
+          </button>
+        ) : (
+          <span className="ob-topspacer" style={{ width: 106 }} />
+        )}
       </div>
 
       {/* Step body */}
@@ -360,35 +578,10 @@ export default function OnboardingPage() {
         {step === "birthdate" && (
           <StepShell title="When were you born?" subtitle="Your age tunes your metabolic rate.">
             <div style={{ width: "100%", maxWidth: 400 }}>
-              <div
-                className="flex items-center"
-                style={{
-                  gap: 12,
-                  background: "var(--surface-card)",
-                  border: "1.5px solid var(--border-color)",
-                  borderRadius: 16,
-                  padding: "16px 18px",
-                }}
-              >
-                <Cake size={22} style={{ color: "var(--lime-400)", flex: "none" }} />
-                <input
-                  type="date"
-                  value={birthDate}
-                  max={maxBirthDate}
-                  min="1926-01-01"
-                  onChange={(e) => setBirthDate(e.target.value)}
-                  style={{
-                    flex: 1,
-                    background: "none",
-                    border: "none",
-                    outline: "none",
-                    color: "var(--text-primary)",
-                    fontSize: 18,
-                    fontFamily: "var(--font-mono)",
-                    colorScheme: "dark",
-                  }}
-                  aria-label="Birth date"
-                />
+              <BirthDateInput value={birthDate} onChange={setBirthDate} />
+              <div className="flex items-center justify-center" style={{ gap: 7, marginTop: 12, fontSize: 12.5, color: "var(--text-tertiary)" }}>
+                <Cake size={13} style={{ color: "var(--lime-400)", flex: "none" }} />
+                Day / Month / Year
               </div>
               {birthDate && age >= 13 && (
                 <div className="ob-option" style={{ marginTop: 18, textAlign: "center", fontSize: 15, color: "var(--text-secondary)" }}>
@@ -523,6 +716,92 @@ export default function OnboardingPage() {
           </StepShell>
         )}
 
+        {step === "timeframe" && (
+          <StepShell
+            title="How soon do you want to get there?"
+            subtitle="This sets how big a daily deficit — or surplus — we plan for."
+          >
+            <div style={{ width: "100%", maxWidth: 480, display: "flex", flexDirection: "column", gap: 10 }}>
+              {TIMEFRAME_OPTIONS.map((opt, i) => {
+                const selected = timeframeWeeks === opt.weeks;
+                return (
+                  <button
+                    key={opt.label}
+                    onClick={() => setTimeframeWeeks(selected ? null : opt.weeks)}
+                    className="cl-card-hover ob-option"
+                    style={{
+                      animationDelay: `${i * 55}ms`,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 13,
+                      padding: "14px 18px",
+                      borderRadius: 14,
+                      cursor: "pointer",
+                      textAlign: "left",
+                      background: selected ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--surface-card)",
+                      border: selected ? "2px solid var(--lime-400)" : "1px solid var(--border-color)",
+                    }}
+                  >
+                    <Clock size={17} style={{ flex: "none", color: selected ? "var(--lime-400)" : "var(--text-tertiary)" }} />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 15, fontWeight: 600 }}>{opt.label}</span>
+                      <span style={{ display: "block", fontSize: 12.5, color: "var(--text-tertiary)", marginTop: 1 }}>{opt.desc}</span>
+                    </span>
+                    {selected && <Check size={17} style={{ flex: "none", color: "var(--lime-400)" }} />}
+                  </button>
+                );
+              })}
+
+              {/* Live feedback: shows the pace this implies, and says so plainly
+                  when the deadline is faster than is safe rather than obeying. */}
+              {timeframePreview && (
+                <div
+                  style={{
+                    marginTop: 4,
+                    padding: "13px 15px",
+                    borderRadius: 13,
+                    background: timeframePreview.capped
+                      ? "rgba(160, 82, 45, 0.10)"
+                      : "color-mix(in srgb, var(--accent) 9%, transparent)",
+                    border: `1px solid ${timeframePreview.capped ? "rgba(160, 82, 45, 0.35)" : "color-mix(in srgb, var(--accent) 25%, transparent)"}`,
+                    fontSize: 13.5,
+                    lineHeight: 1.55,
+                    color: "var(--text-secondary)",
+                  }}
+                >
+                  {timeframePreview.capped ? (
+                    <>
+                      That&apos;s faster than is safe to lose. We&apos;ll plan for{" "}
+                      <strong style={{ color: "var(--text-primary)" }}>
+                        {timeframePreview.weekly_rate_kg} kg/week
+                      </strong>{" "}
+                      instead — you&apos;d reach your target in about{" "}
+                      <strong style={{ color: "var(--text-primary)" }}>{timeframePreview.projected_weeks} weeks</strong>.
+                    </>
+                  ) : (
+                    <>
+                      That&apos;s{" "}
+                      <strong style={{ color: "var(--text-primary)" }}>
+                        {timeframePreview.weekly_rate_kg} kg/week
+                      </strong>{" "}
+                      — about{" "}
+                      <strong style={{ color: "var(--text-primary)" }}>
+                        {timeframePreview.daily_delta_kcal} kcal/day
+                      </strong>{" "}
+                      {goal === "Lose Weight" ? "below" : "above"} maintenance.
+                    </>
+                  )}
+                </div>
+              )}
+              {timeframeWeeks === null && (
+                <p style={{ fontSize: 12.5, color: "var(--text-tertiary)", textAlign: "center", marginTop: 2 }}>
+                  No deadline? We&apos;ll use a steady, sustainable pace.
+                </p>
+              )}
+            </div>
+          </StepShell>
+        )}
+
         {step === "activity" && (
           <StepShell title="How active are you?" subtitle="Outside deliberate workouts count too.">
             <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: 480 }}>
@@ -648,38 +927,64 @@ export default function OnboardingPage() {
         {step === "diet" && (
           <StepShell title="How do you eat?" subtitle="So every suggestion is something you'd actually eat.">
             <div style={{ width: "100%", maxWidth: 560, display: "flex", flexDirection: "column", gap: 10 }}>
-              {DIETARY_PREFERENCES.map((pref, i) => (
-                <button
-                  key={pref}
-                  onClick={() => setDietaryPreference(pref)}
-                  className="cl-card-hover ob-option"
-                  style={{
-                    animationDelay: `${i * 50}ms`,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "14px 18px",
-                    borderRadius: 14,
-                    cursor: "pointer",
-                    textAlign: "left",
-                    background: dietaryPreference === pref ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--surface-card)",
-                    border: dietaryPreference === pref ? "2px solid var(--lime-400)" : "1px solid var(--border-color)",
-                  }}
-                >
-                  <Salad size={17} style={{ flex: "none", color: dietaryPreference === pref ? "var(--lime-400)" : "var(--text-tertiary)" }} />
-                  <span style={{ flex: 1, fontSize: 15, fontWeight: 600 }}>{pref}</span>
-                  {dietaryPreference === pref && <Check size={18} style={{ color: "var(--lime-400)" }} />}
-                </button>
-              ))}
+              {DIETARY_PREFERENCES.map((pref, i) => {
+                const selected = dietaryPreference === pref;
+                return (
+                  <button
+                    key={pref}
+                    // Tapping the selected row clears it, matching the water
+                    // tracker — otherwise a mis-tap is impossible to undo.
+                    onClick={() => setDietaryPreference(selected ? null : pref)}
+                    aria-pressed={selected}
+                    className="cl-card-hover ob-option"
+                    style={{
+                      animationDelay: `${i * 50}ms`,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "14px 18px",
+                      borderRadius: 14,
+                      cursor: "pointer",
+                      textAlign: "left",
+                      background: selected ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--surface-card)",
+                      border: selected ? "2px solid var(--lime-400)" : "1px solid var(--border-color)",
+                    }}
+                  >
+                    <Salad size={17} style={{ flex: "none", color: selected ? "var(--lime-400)" : "var(--text-tertiary)" }} />
+                    <span style={{ flex: 1, fontSize: 15, fontWeight: 600 }}>{pref}</span>
+                    {/* These labels mean different things in different places —
+                        "vegetarian" includes eggs in much of the world but not
+                        here — so the boundary is one hover/tap away. */}
+                    <span
+                      className="ob-info"
+                      tabIndex={0}
+                      role="note"
+                      aria-label={`${pref}: ${DIETARY_PREFERENCE_NOTES[pref] ?? ""}`}
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      <Info size={15} />
+                      <span className="ob-tip">{DIETARY_PREFERENCE_NOTES[pref]}</span>
+                    </span>
+                    {selected && <Check size={18} style={{ color: "var(--lime-400)", flex: "none" }} />}
+                  </button>
+                );
+              })}
 
               <div style={{ marginTop: 8, textAlign: "left" }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 9 }}>
                   Allergies or foods to avoid <span style={{ color: "var(--text-tertiary)", fontWeight: 500 }}>(optional)</span>
                 </div>
                 <ChipGrid
-                  options={[...COMMON_ALLERGIES]}
+                  // Anything the user typed appears alongside the presets, so a
+                  // custom entry is toggled and removed the same way.
+                  options={[...COMMON_ALLERGIES, ...allergies.filter((a) => !COMMON_ALLERGIES.includes(a as never))]}
                   selected={allergies}
                   onToggle={(v) => setAllergies((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))}
+                />
+                <AllergyAdder
+                  existing={allergies}
+                  onAdd={(v) => setAllergies((prev) => (prev.includes(v) ? prev : [...prev, v]))}
                 />
               </div>
             </div>
@@ -738,9 +1043,62 @@ export default function OnboardingPage() {
               <Tile color="var(--macro-carbs)" label="Carbs" value={`${plan.carbs_g}g`} icon={<Flame size={15} />} />
               <Tile color="var(--macro-fat)" label="Fat" value={`${plan.fat_g}g`} icon={<Scale size={15} />} />
               <Tile color="var(--macro-fiber)" label="Fiber" value={`${plan.fiber_g}g`} icon={<Target size={15} />} />
-              <Tile color="var(--info)" label="Steps" value={plan.step_goal.toLocaleString()} icon={<Footprints size={15} />} />
+              <Tile
+                color="var(--info)"
+                label="Steps"
+                value={plan.step_goal.toLocaleString()}
+                sub={formatKm(stepsToKm(plan.step_goal, heightCm))}
+                icon={<Footprints size={15} />}
+              />
               <Tile color="var(--info)" label="Water" value={`${(plan.water_ml / 1000).toFixed(1)}L`} icon={<Droplet size={15} />} />
             </div>
+
+            {/* Timeline — only when a target weight AND a deadline were given */}
+            {plan.timeline && (
+              <div
+                className="ob-option"
+                style={{
+                  animationDelay: "185ms",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                  background: "var(--surface-card)",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: 18,
+                  padding: "16px 20px",
+                  marginBottom: 14,
+                }}
+              >
+                <span
+                  style={{
+                    flex: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 40,
+                    height: 40,
+                    borderRadius: 13,
+                    background: "color-mix(in srgb, var(--accent) 13%, transparent)",
+                    color: "var(--accent-text)",
+                  }}
+                >
+                  <Clock size={19} />
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--text-primary)" }}>
+                    {plan.timeline.weekly_rate_kg} kg / week ·{" "}
+                    <span style={{ color: "var(--accent-text)" }}>
+                      ~{plan.timeline.projected_weeks} weeks
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12.5, color: "var(--text-tertiary)", marginTop: 2, lineHeight: 1.5 }}>
+                    {plan.timeline.capped
+                      ? `Your deadline was faster than is safe — this is the quickest healthy pace.`
+                      : `On track for the ${plan.timeline.requested_weeks}-week target you picked.`}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Meal calorie split */}
             <div
@@ -767,16 +1125,22 @@ export default function OnboardingPage() {
                   Your weekly training split{workoutDays ? ` · ${workoutDays} days` : ""}
                 </div>
               </div>
-              <div style={{ fontSize: 14, lineHeight: 1.9, color: "var(--text-secondary)" }}>
-                <ReactMarkdown
-                  components={{
-                    p: ({ ...props }) => <p style={{ margin: 0 }} {...props} />,
-                    strong: ({ ...props }) => <strong style={{ color: "var(--lime-600)", fontWeight: 700 }} {...props} />,
-                  }}
-                >
-                  {weeklyPlan}
-                </ReactMarkdown>
-              </div>
+              {/* Cards when the plan parses; markdown only if the model
+                  returned something unexpected, so nothing is ever lost. */}
+              {parsePlanLines(weeklyPlan).length > 0 ? (
+                <WeeklySplitCards markdown={weeklyPlan} />
+              ) : (
+                <div style={{ fontSize: 14, lineHeight: 1.9, color: "var(--text-secondary)" }}>
+                  <ReactMarkdown
+                    components={{
+                      p: ({ ...props }) => <p style={{ margin: 0 }} {...props} />,
+                      strong: ({ ...props }) => <strong style={{ color: "var(--lime-600)", fontWeight: 700 }} {...props} />,
+                    }}
+                  >
+                    {weeklyPlan}
+                  </ReactMarkdown>
+                </div>
+              )}
             </div>
 
             {/* Diet plan — built from the same goals + health answers */}
@@ -791,16 +1155,20 @@ export default function OnboardingPage() {
                     Your day of eating{dietaryPreference ? ` · ${dietaryPreference}` : ""}
                   </div>
                 </div>
-                <div style={{ fontSize: 14, lineHeight: 1.9, color: "var(--text-secondary)" }}>
-                  <ReactMarkdown
-                    components={{
-                      p: ({ ...props }) => <p style={{ margin: 0 }} {...props} />,
-                      strong: ({ ...props }) => <strong style={{ color: "var(--lime-600)", fontWeight: 700 }} {...props} />,
-                    }}
-                  >
-                    {dietPlan}
-                  </ReactMarkdown>
-                </div>
+                {parsePlanLines(dietPlan).length > 0 ? (
+                  <DietPlanCards markdown={dietPlan} />
+                ) : (
+                  <div style={{ fontSize: 14, lineHeight: 1.9, color: "var(--text-secondary)" }}>
+                    <ReactMarkdown
+                      components={{
+                        p: ({ ...props }) => <p style={{ margin: 0 }} {...props} />,
+                        strong: ({ ...props }) => <strong style={{ color: "var(--lime-600)", fontWeight: 700 }} {...props} />,
+                      }}
+                    >
+                      {dietPlan}
+                    </ReactMarkdown>
+                  </div>
+                )}
                 {(healthConditions.length > 0 || allergies.length > 0) && (
                   <div className="flex items-center" style={{ gap: 7, marginTop: 14, fontSize: 11.5, color: "var(--text-tertiary)" }}>
                     <HeartPulse size={13} style={{ color: "var(--lime-600)", flex: "none" }} />
@@ -878,9 +1246,132 @@ export default function OnboardingPage() {
           50% { transform: translateY(-9px); }
         }
         .ob-option { animation: ob-option-in .45s cubic-bezier(.22,1,.36,1) both; }
+
+        /* ── Skip for now ── */
+        .ob-skip {
+          flex: none;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 13px;
+          border: 1px solid var(--border-color);
+          border-radius: 999px;
+          background: transparent;
+          color: var(--text-tertiary);
+          font-family: inherit;
+          font-size: 12.5px;
+          font-weight: 600;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: background .12s ease, color .12s ease, border-color .12s ease;
+        }
+        .ob-skip:hover:not(:disabled) {
+          background: var(--surface-elevated);
+          color: var(--text-primary);
+          border-color: var(--accent);
+        }
+        .ob-skip:disabled { opacity: .6; cursor: default; }
+
+        /* ── "What does this mean?" on each diet row ── */
+        .ob-info {
+          position: relative;
+          flex: none;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          color: var(--text-tertiary);
+          cursor: help;
+          outline: none;
+        }
+        .ob-info:hover, .ob-info:focus-visible {
+          color: var(--accent-text);
+          background: color-mix(in srgb, var(--accent) 12%, transparent);
+        }
+        .ob-tip {
+          position: absolute;
+          bottom: calc(100% + 9px);
+          right: -6px;
+          z-index: 30;
+          width: max-content;
+          max-width: 240px;
+          padding: 9px 11px;
+          border-radius: 10px;
+          background: var(--text-primary);
+          color: var(--bg-app);
+          font-size: 12px;
+          font-weight: 500;
+          line-height: 1.45;
+          text-align: left;
+          white-space: normal;
+          opacity: 0;
+          transform: translateY(4px);
+          pointer-events: none;
+          transition: opacity .13s ease, transform .13s ease;
+          box-shadow: 0 8px 24px rgba(0,0,0,.22);
+        }
+        .ob-info:hover .ob-tip, .ob-info:focus-visible .ob-tip {
+          opacity: 1;
+          transform: translateY(0);
+        }
+
+        /* ── Custom allergy entry ── */
+        .ob-addchip {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 9px;
+          padding: 8px 14px;
+          border: 1px dashed var(--border-color);
+          border-radius: 999px;
+          background: transparent;
+          color: var(--text-secondary);
+          font-family: inherit;
+          font-size: 12.5px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+        .ob-addchip:hover { border-color: var(--accent); color: var(--accent-text); }
+        .ob-addrow {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          margin-top: 9px;
+        }
+        .ob-addrow input {
+          flex: 1;
+          min-width: 0;
+          padding: 9px 13px;
+          border: 1.5px solid var(--accent);
+          border-radius: 999px;
+          background: var(--surface-card);
+          color: var(--text-primary);
+          font-family: inherit;
+          font-size: 13px;
+          outline: none;
+        }
+        .ob-addok, .ob-addcancel {
+          flex: none;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 34px;
+          height: 34px;
+          border-radius: 50%;
+          border: none;
+          cursor: pointer;
+        }
+        .ob-addok { background: var(--accent); color: var(--on-accent); }
+        .ob-addcancel { background: var(--surface-elevated); color: var(--text-tertiary); }
+
         @media (max-width: 640px) {
           .ob-top { padding: 16px 16px !important; }
           .ob-topspacer { display: none; }
+          .ob-skip { padding: 7px 10px; font-size: 11.5px; }
+          /* A tooltip anchored to a narrow screen's right edge would clip. */
+          .ob-tip { max-width: 200px; right: -4px; }
           .ob-brandname { display: none; }
           .ob-body { padding: 12px 16px 24px !important; justify-content: flex-start !important; padding-top: 5vh !important; }
           .ob-title-xl { font-size: 30px !important; }
@@ -1107,7 +1598,58 @@ function ChipGrid({
   );
 }
 
-function Tile({ color, label, value, icon }: { color: string; label: string; value: string; icon: React.ReactNode }) {
+/**
+ * Free-text entry for an allergy the preset chips don't cover. Kept beside the
+ * chips rather than replacing them so the common cases stay one tap away.
+ */
+function AllergyAdder({ existing, onAdd }: { existing: string[]; onAdd: (value: string) => void }) {
+  const [open, setOpen] = React.useState(false);
+  const [draft, setDraft] = React.useState("");
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+
+  const commit = () => {
+    const value = draft.trim().replace(/\s+/g, " ").slice(0, 40);
+    // Case-insensitive dedupe, so "Prawns" can't be added twice as "prawns".
+    if (value && !existing.some((e) => e.toLowerCase() === value.toLowerCase())) onAdd(value);
+    setDraft("");
+    setOpen(false);
+  };
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="ob-addchip">
+        <Plus size={13} /> Add your own
+      </button>
+    );
+  }
+
+  return (
+    <div className="ob-addrow">
+      <input
+        ref={inputRef}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          // The wizard advances on Enter, so this must not bubble.
+          e.stopPropagation();
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") { setDraft(""); setOpen(false); }
+        }}
+        placeholder="e.g. brinjal, prawns, mustard"
+        maxLength={40}
+        aria-label="Add a food to avoid"
+      />
+      <button type="button" onClick={commit} aria-label="Add" className="ob-addok"><Check size={15} /></button>
+      <button type="button" onClick={() => { setDraft(""); setOpen(false); }} aria-label="Cancel" className="ob-addcancel"><X size={15} /></button>
+    </div>
+  );
+}
+
+function Tile({ color, label, value, icon, sub }: { color: string; label: string; value: string; icon: React.ReactNode; sub?: string }) {
   return (
     <div style={{ background: "var(--surface-card)", border: "1px solid var(--border-color)", borderRadius: 14, padding: "16px 12px", textAlign: "center" }}>
       <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 9, background: "var(--surface-elevated)", color, marginBottom: 8 }}>
@@ -1115,6 +1657,9 @@ function Tile({ color, label, value, icon }: { color: string; label: string; val
       </span>
       <div className="cl-mono" style={{ fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>{value}</div>
       <div style={{ fontSize: 11.5, color: "var(--text-tertiary)", marginTop: 2 }}>{label}</div>
+      {sub && (
+        <div className="cl-mono" style={{ fontSize: 11, color, marginTop: 3, fontWeight: 600 }}>{sub}</div>
+      )}
     </div>
   );
 }

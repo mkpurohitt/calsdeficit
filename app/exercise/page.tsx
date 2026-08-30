@@ -10,6 +10,7 @@ import { getDateKey, getDay, getUserGoal, getWorkoutLogs, saveUserGoal, saveWork
 import { apiFetch } from "../../lib/api-client";
 import { makeVideoThumb, MAX_VIDEO_BYTES, fileToBase64 } from "../../lib/image-compress";
 import { STEP_GOAL } from "../../lib/config/app";
+import { formatKm, stepsToKm } from "../../lib/plan";
 import { ArrowRight, BicepsFlexed, Check, Dumbbell, Footprints, Grip, Loader2, Pencil, Plus, Send, Shield, Sparkles, Target, Upload, Video, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -111,6 +112,8 @@ export default function ExercisePage() {
   const [selectedDateObj, setSelectedDateObj] = useState(() => new Date());
   const [steps, setSteps] = useState(0);
   const [stepGoal, setStepGoal] = useState(STEP_GOAL);
+  /** Height drives stride length, so the goal reads as a real distance. */
+  const [heightCm, setHeightCm] = useState(170);
   const [libraryCounts, setLibraryCounts] = useState<LibraryCounts | null>(null);
   const [weeklyPlan, setWeeklyPlan] = useState<string>("");
   const [planBusy, setPlanBusy] = useState<string | null>(null);
@@ -189,6 +192,7 @@ export default function ExercisePage() {
 
       setSteps(day?.steps || 0);
       setStepGoal(goal?.step_goal || STEP_GOAL);
+      setHeightCm(goal?.height_cm || 170);
       setWeeklyPlan(goal?.weekly_plan || "");
     };
 
@@ -712,6 +716,9 @@ export default function ExercisePage() {
                     {steps.toLocaleString()}
                   </div>
                   <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4 }}>/ {stepGoal.toLocaleString()} steps</div>
+                  <div className="cl-mono" style={{ fontSize: 11.5, color: "var(--info)", marginTop: 3, fontWeight: 600 }}>
+                    {formatKm(stepsToKm(stepGoal, heightCm))}
+                  </div>
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "flex-start", gap: 7, marginTop: 14, fontSize: 12, color: "var(--text-tertiary)", lineHeight: 1.5 }}>

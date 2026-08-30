@@ -36,29 +36,84 @@ function sub(userId: string, name: string) {
   return collection(db, "users", userId, name);
 }
 
-/**
- * Firestore rejects `undefined` anywhere in a document. Message payloads carry
- * nested AI cards whose optional fields are often absent, so drop them before
- * writing rather than letting one missing macro fail the whole save.
+/* ── Write compaction ─────────────────────────────────────────────────────
+ * Firestore bills by document size, and the payloads we write are generated:
+ * macros arrive as full IEEE doubles (`23.400000000000002` — 18 bytes to say
+ * 23.4), and optional fields arrive as `undefined`/`null`/`""` that carry no
+ * information at all. Both are stripped on the way in.
+ *
+ * This is deliberately lossless *as far as the UI is concerned*: every number
+ * is rounded to more precision than any screen renders (grams to 0.1 g,
+ * calories and counts to whole units), so no displayed value can change.
+ * Nothing is encoded or compressed into an opaque blob — the documents stay
+ * plain JSON so security rules, queries and the console still work on them.
  */
-function stripUndefined<T>(value: T): T {
-  if (Array.isArray(value)) return value.map(stripUndefined) as unknown as T;
+
+/** Keys whose values are counts/energies and are never shown with decimals. */
+const INTEGER_KEYS = new Set([
+  "calories", "daily_calories", "tdee", "bmr", "step_goal", "steps", "water_ml",
+  "sets", "reps", "weight_lbs", "score", "breakfast", "lunch", "dinner", "snacks",
+  "projected_weeks", "requested_weeks", "daily_delta_kcal", "timeframe_weeks", "age",
+]);
+
+/** A thumbnail this large means something went wrong upstream (they're ~2–5 KB
+ *  at 96px/0.6 quality); storing it would bloat the row for no visible gain. */
+const MAX_THUMB_CHARS = 60_000;
+const THUMB_KEYS = new Set(["photo_thumb", "thumb"]);
+
+function compactNumber(key: string, value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  if (INTEGER_KEYS.has(key)) return Math.round(value);
+  // 0.1 g is finer than anything the UI prints, so rounding here is invisible.
+  return Math.round(value * 10) / 10;
+}
+
+/**
+ * Drops fields that carry no information and trims generated float noise.
+ * `0` and `false` are kept — they are answers, not absences.
+ */
+function compact<T>(value: T, key = ""): T {
+  if (typeof value === "number") return compactNumber(key, value) as unknown as T;
+
+  if (typeof value === "string") {
+    if (THUMB_KEYS.has(key) && value.length > MAX_THUMB_CHARS) {
+      console.warn(`[store] dropping oversized ${key} (${value.length} chars)`);
+      return undefined as unknown as T;
+    }
+    return value as unknown as T;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((v) => compact(v, key)).filter((v) => v !== undefined) as unknown as T;
+  }
+
   if (value && typeof value === "object" && !(value instanceof Date)) {
     const out: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-      if (val !== undefined) out[key] = stripUndefined(val);
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v === undefined || v === null) continue;
+      if (typeof v === "string" && v === "") continue;
+      if (Array.isArray(v) && v.length === 0) continue;
+      const compacted = compact(v, k);
+      if (compacted === undefined) continue;
+      // An object that compacted down to nothing is itself noise.
+      if (compacted && typeof compacted === "object" && !Array.isArray(compacted) && Object.keys(compacted).length === 0) continue;
+      out[k] = compacted;
     }
     return out as T;
   }
+
   return value;
 }
+
+/** Kept as a name the call sites already read well with. */
+const stripUndefined = compact;
 
 export const firestoreStore: UserDataStore = {
   async saveUserGoal(goal: UserGoalRecord) {
     try {
       await setDoc(
         userDoc(goal.user_id),
-        { goal: { ...goal, updated_at: new Date().toISOString() } },
+        { goal: compact({ ...goal, updated_at: new Date().toISOString() }) },
         { merge: true }
       );
     } catch (error) {
@@ -80,7 +135,7 @@ export const firestoreStore: UserDataStore = {
   async addFoodLog(log) {
     try {
       const record = { ...log, created_at: new Date().toISOString() };
-      const ref = await addDoc(sub(log.user_id, "foodLogs"), record);
+      const ref = await addDoc(sub(log.user_id, "foodLogs"), compact(record));
       return { ...record, id: ref.id } as FoodLogRecord;
     } catch (error) {
       console.error("Error adding food log:", error);
@@ -111,7 +166,7 @@ export const firestoreStore: UserDataStore = {
 
   async saveWorkoutLog(log) {
     try {
-      const ref = await addDoc(sub(log.user_id, "workoutLogs"), log);
+      const ref = await addDoc(sub(log.user_id, "workoutLogs"), compact(log));
       return { ...log, id: ref.id } as WorkoutLogRecord;
     } catch (error) {
       console.error("Error saving workout log:", error);
@@ -134,7 +189,7 @@ export const firestoreStore: UserDataStore = {
 
   async saveFormAnalysis(record) {
     try {
-      await addDoc(sub(record.user_id, "formAnalyses"), record);
+      await addDoc(sub(record.user_id, "formAnalyses"), compact(record));
     } catch (error) {
       console.error("Error saving form analysis:", error);
     }
@@ -186,7 +241,7 @@ export const firestoreStore: UserDataStore = {
 
   async addScanHistory(record: Omit<ScanHistoryRecord, "id">) {
     try {
-      const ref = await addDoc(sub(record.user_id, "scanHistory"), record);
+      const ref = await addDoc(sub(record.user_id, "scanHistory"), compact(record));
       // Keep the collection small: prune everything past the newest 10.
       try {
         const snap = await getDocs(query(sub(record.user_id, "scanHistory"), orderBy("created_at", "desc")));
@@ -240,7 +295,7 @@ export const firestoreStore: UserDataStore = {
           {
             ...(keepTitle ? {} : { title: record.title }),
             preview: record.preview,
-            messages,
+            messages: compact(messages),
             updated_at: record.updated_at,
           },
           { merge: true }
@@ -250,7 +305,7 @@ export const firestoreStore: UserDataStore = {
       const ref = await addDoc(sub(record.user_id, "conversations"), {
         title: record.title,
         preview: record.preview,
-        messages,
+        messages: compact(messages),
         created_at: record.created_at,
         updated_at: record.updated_at,
       });
