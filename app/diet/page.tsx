@@ -65,6 +65,8 @@ export default function DietPage() {
   // Scanner modal state
   const [showScanner, setScannerOpen] = useState(false);
   const [scanImage, setScanImage] = useState<File | null>(null);
+  /** The ≤768px copy of scanImage — what actually gets uploaded and thumbed. */
+  const [scanCompressed, setScanCompressed] = useState<File | null>(null);
   const [scanContext, setScanContext] = useState("");
   const [scanPreview, setScanPreview] = useState<string | null>(null);
   const [scanMealType, setScanMealType] = useState("Breakfast");
@@ -186,6 +188,7 @@ export default function DietPage() {
   const openScanner = (mealType?: string) => {
     setScannerOpen(true);
     setScanImage(null);
+    setScanCompressed(null);
     setScanContext("");
     setScanPreview(null);
     setScanResult(null);
@@ -198,6 +201,7 @@ export default function DietPage() {
   const closeScanner = () => {
     setScannerOpen(false);
     setScanImage(null);
+    setScanCompressed(null);
     setScanContext("");
     setScanPreview(null);
     setScanResult(null);
@@ -223,14 +227,26 @@ export default function DietPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showScanner]);
 
-  const handleImageSelect = (file: File) => {
+  /**
+   * Downscales once, up front, and works from that copy everywhere after.
+   *
+   * Compressing here rather than at Analyse time means the work overlaps with
+   * the user typing their description, and — more importantly — the preview
+   * data-URL is built from the ≤768px copy instead of the raw camera file. A
+   * 5 MB phone photo base64s to a ~6.7 MB string; holding that in React state
+   * purely to show a 200px-tall preview is the kind of thing that makes a
+   * mid-range phone stutter.
+   */
+  const handleImageSelect = async (file: File) => {
     setScanImage(file);
     setScanResult(null);
     setScanError(null);
     setSaved(false);
+    const compressed = await compressImage(file).catch(() => file);
+    setScanCompressed(compressed);
     const reader = new FileReader();
     reader.onload = (e) => setScanPreview(e.target?.result as string);
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(compressed);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -251,9 +267,9 @@ export default function DietPage() {
     try {
       const formData = new FormData();
       if (scanImage) {
-        // Standardize on-device (≤768px / 75% JPEG → flat 258 Gemini tokens)
-        const compressed = await compressImage(scanImage);
-        formData.append('image', compressed);
+        // Already standardized at select time (≤768px / 75% JPEG → a flat 258
+        // Gemini tokens); the fallback covers a compression failure.
+        formData.append('image', scanCompressed ?? (await compressImage(scanImage)));
       }
       if (scanContext.trim()) formData.append('context', scanContext.trim());
       formData.append('meal_type', scanMealType);
@@ -283,7 +299,10 @@ export default function DietPage() {
 
     try {
       // Tiny thumb of the scanned photo so the journal row can show it.
-      const photoThumb = scanImage ? await makeImageThumb(scanImage) : null;
+      // Thumb from the downscaled copy — re-decoding the raw camera file just
+      // to produce a 96px thumbnail is pure waste on a phone.
+      const thumbSource = scanCompressed ?? scanImage;
+      const photoThumb = thumbSource ? await makeImageThumb(thumbSource) : null;
       await addFoodLog({
         user_id: user.uid,
         food_name: scanResult.food_name,
@@ -1112,7 +1131,7 @@ export default function DietPage() {
                     style={{ width: "100%", height: 200, objectFit: "cover", borderRadius: 12 }}
                   />
                   <button
-                    onClick={() => { setScanImage(null); setScanPreview(null); setScanResult(null); }}
+                    onClick={() => { setScanImage(null); setScanCompressed(null); setScanPreview(null); setScanResult(null); }}
                     style={{
                       position: "absolute", top: 8, right: 8,
                       width: 28, height: 28, borderRadius: "var(--radius-full)",

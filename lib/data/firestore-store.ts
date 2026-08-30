@@ -219,7 +219,7 @@ export const firestoreStore: UserDataStore = {
     try {
       await setDoc(
         doc(db, "users", userId, "days", dateKey),
-        { ...patch, date_key: dateKey, updated_at: new Date().toISOString() },
+        compact({ ...patch, date_key: dateKey, updated_at: new Date().toISOString() }),
         { merge: true }
       );
     } catch (error) {
@@ -231,7 +231,7 @@ export const firestoreStore: UserDataStore = {
     try {
       await setDoc(
         userDoc(record.user_id),
-        { notificationPrefs: { ...record, updated_at: new Date().toISOString() } },
+        { notificationPrefs: compact({ ...record, updated_at: new Date().toISOString() }) },
         { merge: true }
       );
     } catch (error) {

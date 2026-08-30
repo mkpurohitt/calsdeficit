@@ -11,7 +11,7 @@ import FoodScanCard from "../components/FoodScanCard";
 import { announceConversations } from "../components/ChatHistory";
 import ShareChatButton from "../components/ShareChatButton";
 import { apiFetch } from "../lib/api-client";
-import { compressImage, fileToBase64, makeImageThumb, MAX_VIDEO_BYTES } from "../lib/image-compress";
+import { compressImage, compressVideo, fileToBase64, makeImageThumb, MAX_VIDEO_BYTES } from "../lib/image-compress";
 import type { FoodScanResult } from "../lib/schemas/food-scan";
 import { getFoodLogs, getUserGoal, getDay, getDateKey, addFoodLog, addScanHistory, deleteScanHistory, saveWorkoutLog, saveConversation, getConversation } from "../lib/user-data";
 import { STEP_GOAL } from "../lib/config/app";
@@ -72,6 +72,11 @@ interface ExerciseResult {
 /** A fresh chat starts empty — the welcome hero stands in for a greeting
  *  bubble, the way Claude and ChatGPT open. */
 const INITIAL_MESSAGES: Message[] = [];
+
+/** Mirrors the caps /api/chat applies to `history`; keep the two in step so
+ *  the client never uploads context the server is going to throw away. */
+const HISTORY_TURNS = 10;
+const HISTORY_CHARS = 1200;
 
 /** Time-of-day greeting. Fixed wording per slot, so it never reads as random. */
 function greetingFor(date: Date, firstName: string): { title: string; sub: string } {
@@ -466,10 +471,14 @@ function Dashboard() {
       fileObj: currentFile,
     };
 
-    // Prior turns (before this message) become the AI's context.
+    // Prior turns (before this message) become the AI's context. Trimmed to
+    // exactly what /api/chat will actually use — it slices to the last 10 turns
+    // at 1200 chars each anyway, so uploading a whole long conversation every
+    // turn just burns the user's mobile data on bytes the server discards.
     const priorTurns = messagesRef.current
       .filter((m) => (m.role === "user" || m.role === "ai") && toHistoryText(m).trim())
-      .map((m) => ({ role: m.role, text: toHistoryText(m) }));
+      .slice(-HISTORY_TURNS)
+      .map((m) => ({ role: m.role, text: toHistoryText(m).slice(0, HISTORY_CHARS) }));
 
     const base = [...messagesRef.current, userMsg];
     setMessages(base);
@@ -483,12 +492,20 @@ function Dashboard() {
     try {
       let fileData: string | null = null;
       let mimeType: string | null = null;
+      // Kept in scope so the thumbnail below reuses this downscaled copy
+      // instead of decoding the full-resolution original a second time.
+      let prepared: File | null = null;
 
       if (currentFile) {
-        // Images are standardized on-device (≤768px / 75% JPEG) so each scan
-        // costs a flat 258 input tokens.
-        const prepared = currentFile.type.startsWith("image/")
+        // Everything is standardized on-device before it's base64'd (which
+        // inflates it by a further ~33%) and shipped to the model:
+        //  - images → ≤768px / 75% JPEG, a flat 258 input tokens per scan
+        //  - video  → ≤480px / 24fps, no audio; a raw phone clip is tens of
+        //    Mbps and none of that resolution helps recognise an exercise
+        prepared = currentFile.type.startsWith("image/")
           ? await compressImage(currentFile)
+          : currentFile.type.startsWith("video/")
+          ? await compressVideo(currentFile)
           : currentFile;
         fileData = await fileToBase64(prepared);
         mimeType = prepared.type;
@@ -506,7 +523,9 @@ function Dashboard() {
       if (data.success) {
         if (data.kind === 'food-scan' && data.scan) {
           const scan = data.scan as FoodScanResult;
-          const imgFile = currentFile?.type.startsWith("image/") ? currentFile : null;
+          // The already-downscaled copy: the thumb is 96px, so decoding the
+          // original phone photo again just to shrink it further is wasted work.
+          const imgFile = prepared?.type.startsWith("image/") ? prepared : null;
           finalMsgs = [...base, { role: "ai", text: "", scan, fileObj: imgFile, adKeywords: data.adKeywords || [], adsEnabled: data.adsEnabled ?? true }];
           // Record a compressed copy in scan history (Diet shows unsaved scans).
           if (user?.uid) {
