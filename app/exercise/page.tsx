@@ -8,10 +8,10 @@ import FormCheckPanel from "../../components/FormCheckPanel";
 import { useAuth } from "../../lib/AuthContext";
 import { getDateKey, getDay, getUserGoal, getWorkoutLogs, saveUserGoal, saveWorkoutLog } from "../../lib/user-data";
 import { apiFetch } from "../../lib/api-client";
-import { makeVideoThumb, MAX_VIDEO_BYTES, fileToBase64 } from "../../lib/image-compress";
+import { compressVideo, makeVideoThumb, MAX_VIDEO_BYTES, fileToBase64 } from "../../lib/image-compress";
 import { STEP_GOAL } from "../../lib/config/app";
 import { formatKm, stepsToKm } from "../../lib/plan";
-import { ArrowRight, BicepsFlexed, Check, Dumbbell, Footprints, Grip, Loader2, Pencil, Plus, Send, Shield, Sparkles, Target, Upload, Video, Zap } from "lucide-react";
+import { ArrowRight, BicepsFlexed, Camera, Check, Dumbbell, Footprints, Grip, Loader2, Pencil, Plus, Send, Shield, Sparkles, Target, Upload, Video, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 interface WorkoutDisplayItem {
@@ -126,6 +126,11 @@ export default function ExercisePage() {
   const [quickBusy, setQuickBusy] = useState(false);
   const [quickError, setQuickError] = useState<string | null>(null);
   const [quickSaved, setQuickSaved] = useState(false);
+  const [quickAttachOpen, setQuickAttachOpen] = useState(false);
+  const [quickCompressing, setQuickCompressing] = useState(false);
+  const quickCameraRef = useRef<HTMLInputElement>(null);
+  const quickGalleryRef = useRef<HTMLInputElement>(null);
+  const quickAttachRef = useRef<HTMLDivElement>(null);
 
   // Stable per-mount "today" so effects depending on it don't re-run every render
   const today = useMemo(() => new Date(), []);
@@ -143,6 +148,33 @@ export default function ExercisePage() {
   const stepR = (stepRingSize / 2) - 7;
   const stepCirc = 2 * Math.PI * stepR;
   const stepDash = stepCirc * (1 - stepPercent);
+
+  useEffect(() => {
+    if (!quickAttachOpen) return;
+    const close = (e: MouseEvent) => {
+      if (!quickAttachRef.current?.contains(e.target as Node)) setQuickAttachOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [quickAttachOpen]);
+
+  /** Shared by the record and gallery inputs — compresses in the background so
+   *  a phone-camera clip doesn't ship at full bitrate to the model. */
+  const handleQuickVideoSelect = async (f: File | null) => {
+    if (!f) return;
+    if (f.size > MAX_VIDEO_BYTES) {
+      setQuickError("Video too large — please keep it under 15 MB.");
+      return;
+    }
+    setQuickError(null);
+    setQuickAttachOpen(false);
+    setQuickCompressing(true);
+    try {
+      setQuickVideo(await compressVideo(f));
+    } finally {
+      setQuickCompressing(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -498,27 +530,58 @@ export default function ExercisePage() {
                       placeholder='Log with AI — e.g. "bench press 4x8 60kg"'
                       style={{ flex: 1, minWidth: 0, background: "none", border: "none", outline: "none", color: "var(--text-primary)", fontSize: 13.5, fontFamily: "inherit" }}
                     />
-                    <label
-                      title="Attach a workout video"
-                      style={{ flex: "none", width: 30, height: 30, borderRadius: 8, border: "1px solid var(--border-color)", background: quickVideo ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--surface-card)", color: quickVideo ? "var(--lime-400)" : "var(--text-tertiary)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
-                    >
-                      <Video size={14} />
+                    {/* Record straight from the camera or pick an existing
+                        clip — a plain file input buries the camera one tap
+                        deeper inside the OS picker. */}
+                    <div ref={quickAttachRef} style={{ position: "relative", flex: "none" }}>
+                      <button
+                        type="button"
+                        title="Attach a workout video"
+                        aria-label="Attach a workout video"
+                        aria-expanded={quickAttachOpen}
+                        onClick={() => setQuickAttachOpen((v) => !v)}
+                        disabled={quickCompressing}
+                        style={{ width: 30, height: 30, borderRadius: 8, border: "1px solid var(--border-color)", background: quickVideo ? "color-mix(in srgb, var(--accent) 12%, transparent)" : "var(--surface-card)", color: quickVideo ? "var(--lime-400)" : "var(--text-tertiary)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                      >
+                        {quickCompressing ? <Loader2 size={14} className="animate-spin" /> : <Video size={14} />}
+                      </button>
+                      {quickAttachOpen && (
+                        <div
+                          role="menu"
+                          style={{ position: "absolute", bottom: "calc(100% + 8px)", right: 0, zIndex: 40, minWidth: 168, padding: 5, background: "var(--surface-card)", border: "1px solid var(--border-color)", borderRadius: 11, boxShadow: "var(--shadow-card)", display: "flex", flexDirection: "column", gap: 1 }}
+                        >
+                          <button type="button" role="menuitem" onClick={() => quickCameraRef.current?.click()} className="cl-menuitem" style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "8px 10px", borderRadius: 8, border: "none", background: "transparent", color: "var(--text-primary)", fontSize: 13, fontWeight: 500, cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                            <Camera size={14} /> Record video
+                          </button>
+                          <button type="button" role="menuitem" onClick={() => quickGalleryRef.current?.click()} className="cl-menuitem" style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "8px 10px", borderRadius: 8, border: "none", background: "transparent", color: "var(--text-primary)", fontSize: 13, fontWeight: 500, cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                            <Upload size={14} /> Choose from gallery
+                          </button>
+                        </div>
+                      )}
                       <input
+                        ref={quickCameraRef}
+                        type="file"
+                        accept="video/*"
+                        capture="environment"
+                        style={{ display: "none" }}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0] || null;
+                          e.target.value = "";
+                          void handleQuickVideoSelect(f);
+                        }}
+                      />
+                      <input
+                        ref={quickGalleryRef}
                         type="file"
                         accept="video/*"
                         style={{ display: "none" }}
                         onChange={(e) => {
                           const f = e.target.files?.[0] || null;
                           e.target.value = "";
-                          if (f && f.size > MAX_VIDEO_BYTES) {
-                            setQuickError("Video too large — please keep it under 15 MB.");
-                            return;
-                          }
-                          setQuickError(null);
-                          setQuickVideo(f);
+                          void handleQuickVideoSelect(f);
                         }}
                       />
-                    </label>
+                    </div>
                     <button
                       onClick={handleQuickLog}
                       disabled={quickBusy || (!quickText.trim() && !quickVideo)}

@@ -331,7 +331,7 @@ export function resolvePortion({
   };
 }
 
-function round1(n: number): number {
+export function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 

@@ -13,6 +13,7 @@ import { compressImage, makeImageThumb } from "../../lib/image-compress";
 import FoodScanCard from "../../components/FoodScanCard";
 import type { FoodScanResult } from "../../lib/schemas/food-scan";
 import { WATER_GLASS_ML, WATER_GOAL_ML } from "../../lib/config/app";
+import { round1 } from "../../lib/portion";
 
 
 interface FoodLogEntry {
@@ -75,6 +76,7 @@ export default function DietPage() {
   const [saved, setSaved] = useState(false);
   const [savingFood, setSavingFood] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   // The scanner renders through a portal, which needs a DOM to target.
   const [portalReady, setPortalReady] = useState(false);
   useEffect(() => setPortalReady(true), []);
@@ -365,10 +367,13 @@ export default function DietPage() {
 
   // Dynamic values from food logs
   const consumed = foodLogs.reduce((sum, log) => sum + (log.calories || 0), 0);
-  const totalProtein = foodLogs.reduce((sum, log) => sum + (log.protein_g || 0), 0);
-  const totalCarbs = foodLogs.reduce((sum, log) => sum + (log.carbs_g || 0), 0);
-  const totalFat = foodLogs.reduce((sum, log) => sum + (log.fat_g || 0), 0);
-  const totalFiber = foodLogs.reduce((sum, log) => sum + (log.fiber_g || 0), 0);
+  // round1 on the way out: summing floats in JS produces IEEE noise
+  // (21.7 + 41.6 = 63.300000000000004) even though every input is a clean
+  // one-decimal value — the arithmetic itself is where the mess is introduced.
+  const totalProtein = round1(foodLogs.reduce((sum, log) => sum + (log.protein_g || 0), 0));
+  const totalCarbs = round1(foodLogs.reduce((sum, log) => sum + (log.carbs_g || 0), 0));
+  const totalFat = round1(foodLogs.reduce((sum, log) => sum + (log.fat_g || 0), 0));
+  const totalFiber = round1(foodLogs.reduce((sum, log) => sum + (log.fiber_g || 0), 0));
 
   const goal = userGoals?.daily_calories || 2400;
   const remaining = Math.max(goal - consumed, 0);
@@ -440,6 +445,7 @@ export default function DietPage() {
     { label: "Protein", value: totalProtein, color: "var(--macro-protein)" },
     { label: "Carbs", value: totalCarbs, color: "var(--macro-carbs)" },
     { label: "Fat", value: totalFat, color: "var(--macro-fat)" },
+    { label: "Fiber", value: totalFiber, color: "var(--macro-fiber)" },
   ];
 
   return (
@@ -707,7 +713,7 @@ export default function DietPage() {
                             <div style={{ flex: 1 }}>
                               <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>{item.food_name}</div>
                               <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 1 }}>
-                                {item.portion} · P:{item.protein_g}g C:{item.carbs_g}g F:{item.fat_g}g
+                                {item.portion} · P:{round1(item.protein_g)}g C:{round1(item.carbs_g)}g F:{round1(item.fat_g)}g
                               </div>
                             </div>
                             <span className="cl-mono" style={{ fontSize: 13, fontWeight: 600, color: "var(--lime-600)" }}>
@@ -1014,39 +1020,77 @@ export default function DietPage() {
               </div>
             </div>
 
-            {/* Image Upload Area */}
+            {/* Image Upload Area — a plain click-to-browse input leaves the
+                camera as just one buried option inside the OS file picker.
+                Two explicit buttons, mirroring the home composer's attach
+                menu, so "take it right now" is a single tap on mobile. */}
             {!scanPreview ? (
               <div
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
                 style={{
                   border: "2px dashed var(--border-color)",
                   borderRadius: 16,
-                  padding: "40px 20px",
+                  padding: "28px 20px",
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
-                  cursor: "pointer",
                   transition: "all 0.2s ease",
                   marginBottom: 16,
                 }}
               >
                 <div style={{
-                  width: 56, height: 56, borderRadius: "var(--radius-full)",
+                  width: 52, height: 52, borderRadius: "var(--radius-full)",
                   background: "var(--surface-elevated)",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   marginBottom: 12,
                 }}>
-                  <Upload size={24} style={{ color: "var(--text-tertiary)" }} />
+                  <Camera size={22} style={{ color: "var(--text-tertiary)" }} />
                 </div>
-                <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
-                  Upload meal photo
+                <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4, textAlign: "center" }}>
+                  Add a meal photo
                 </p>
-                <p style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
-                  Drag & drop or click to browse
+                <p style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 16, textAlign: "center" }}>
+                  Take one now, or upload from your gallery
                 </p>
+                <div className="flex" style={{ gap: 10, width: "100%", maxWidth: 320 }}>
+                  <button
+                    type="button"
+                    onClick={() => cameraInputRef.current?.click()}
+                    className="btn-primary flex items-center justify-center gap-2"
+                    style={{ flex: 1, padding: "10px 14px", borderRadius: 11, fontSize: 13.5 }}
+                  >
+                    <Camera size={15} /> Take Photo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="btn-secondary flex items-center justify-center gap-2"
+                    style={{ flex: 1, padding: "10px 14px", borderRadius: 11, fontSize: 13.5 }}
+                  >
+                    <Upload size={15} /> Gallery
+                  </button>
+                </div>
+                {/* Desktop-only affordance — capture-enabled inputs simply have
+                    no camera to open there, so drag & drop stays the path in. */}
+                <p className="scan-drophint" style={{ fontSize: 11.5, color: "var(--text-tertiary)", marginTop: 10 }}>
+                  or drag &amp; drop an image here
+                </p>
+                {/* `capture="environment"` is what makes this open the camera
+                    directly on a phone instead of the general file picker. */}
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) handleImageSelect(file);
+                  }}
+                />
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -1054,6 +1098,7 @@ export default function DietPage() {
                   style={{ display: "none" }}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
+                    e.target.value = "";
                     if (file) handleImageSelect(file);
                   }}
                 />
@@ -1285,6 +1330,11 @@ export default function DietPage() {
           .scan-modal { max-height: calc(var(--app-vh) - 20px); border-radius: 18px; }
           .scan-modal__head { padding: 14px 14px 12px; }
           .scan-modal__body { padding: 14px; }
+        }
+        /* Drag & drop needs a cursor to drop with — on touch, "or drag & drop"
+           is just confusing filler above two buttons that already cover it. */
+        @media (hover: none) {
+          .scan-drophint { display: none; }
         }
         @keyframes fadeIn {
           from { opacity: 0; }

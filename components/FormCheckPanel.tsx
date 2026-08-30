@@ -2,7 +2,7 @@
 // On-device form check: MediaPipe pose runs in the browser, only compact
 // telemetry JSON goes to /api/form-analysis. Replaces the old Python server.
 import { useRef, useState } from "react";
-import { Camera, CheckCircle2, Loader2, ShieldCheck, Sparkles } from "lucide-react";
+import { Camera, CheckCircle2, Loader2, ShieldCheck, Sparkles, Upload } from "lucide-react";
 import { apiFetch } from "../lib/api-client";
 import { makeVideoThumb } from "../lib/image-compress";
 import AdCard from "./ads/AdCard";
@@ -25,6 +25,7 @@ type Stage = "idle" | "loading-model" | "analyzing" | "scoring" | "done";
 
 export default function FormCheckPanel({ onResult }: FormCheckPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [exerciseHint, setExerciseHint] = useState("");
   const [stage, setStage] = useState<Stage>("idle");
@@ -117,29 +118,58 @@ export default function FormCheckPanel({ onResult }: FormCheckPanelProps) {
 
       {stage === "idle" && !result && (
         <>
+          {/* Two explicit inputs, not one — a plain file input buries the
+              camera one tap deeper inside the OS picker. No compression here:
+              this video never leaves the device (only compact pose telemetry
+              and a thumbnail go to the server), so there's nothing to save by
+              re-encoding it — only extra wait before analysis can start. */}
           <input
+            ref={cameraInputRef}
+            type="file"
+            accept="video/*"
+            capture="environment"
+            className="hidden"
+            onChange={(event) => setFile(event.target.files?.[0] || null)}
+          />
+          <input
+            ref={fileInputRef}
             type="file"
             accept="video/*"
             className="hidden"
-            ref={fileInputRef}
             onChange={(event) => setFile(event.target.files?.[0] || null)}
           />
           <div
             className="flex flex-col items-center justify-center gap-2"
             style={{
-              height: 130,
+              padding: "18px 12px",
               borderRadius: "var(--radius-lg)",
               border: "2px dashed var(--border-color)",
               background: "var(--surface-card)",
-              cursor: "pointer",
             }}
-            onClick={() => fileInputRef.current?.click()}
           >
-            <Camera size={26} style={{ color: "var(--lime-400)" }} />
+            <Camera size={24} style={{ color: "var(--lime-400)" }} />
             <span style={{ fontSize: 13, color: "var(--text-secondary)", textAlign: "center", padding: "0 10px" }}>
-              {file ? file.name : "Drop video or click to upload"}
+              {file ? file.name : "Record your set, or upload a clip"}
             </span>
-            <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>MP4, MOV — up to 60 seconds</span>
+            <span style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 4 }}>MP4, MOV — up to 60 seconds</span>
+            <div className="flex" style={{ gap: 8, width: "100%", maxWidth: 280 }}>
+              <button
+                type="button"
+                onClick={() => cameraInputRef.current?.click()}
+                className="btn-primary flex items-center justify-center gap-2"
+                style={{ flex: 1, padding: "9px 12px", borderRadius: 10, fontSize: 13 }}
+              >
+                <Camera size={13} /> Record
+              </button>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="btn-secondary flex items-center justify-center gap-2"
+                style={{ flex: 1, padding: "9px 12px", borderRadius: 10, fontSize: 13 }}
+              >
+                <Upload size={13} /> Upload
+              </button>
+            </div>
           </div>
 
           <input

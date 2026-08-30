@@ -7,6 +7,7 @@ import { BadgeCheck, Check, ExternalLink, Loader2, TriangleAlert, UtensilsCrosse
 import { affiliateLinkFor } from "../lib/config/affiliate-links";
 import type { FoodScanResult } from "../lib/schemas/food-scan";
 import AdCard from "./ads/AdCard";
+import { round1 } from "../lib/portion";
 
 interface FoodScanCardProps {
   scan: FoodScanResult;
@@ -159,10 +160,10 @@ export default function FoodScanCard({ scan, adKeywords = [], adsEnabled = true,
       {/* Macro tiles */}
       <div className="grid grid-cols-4 gap-2">
         {[
-          { label: "Protein", value: `${scan.protein_g}g`, color: "var(--macro-protein)" },
-          { label: "Fiber", value: `${scan.fiber_g}g`, color: "var(--macro-fiber)" },
-          { label: "Fat", value: `${scan.fat_g}g`, color: "var(--macro-fat)" },
-          { label: "Carbs", value: `${scan.carbs_g}g`, color: "var(--macro-carbs)" },
+          { label: "Protein", value: `${round1(scan.protein_g)}g`, color: "var(--macro-protein)" },
+          { label: "Fiber", value: `${round1(scan.fiber_g)}g`, color: "var(--macro-fiber)" },
+          { label: "Fat", value: `${round1(scan.fat_g)}g`, color: "var(--macro-fat)" },
+          { label: "Carbs", value: `${round1(scan.carbs_g)}g`, color: "var(--macro-carbs)" },
         ].map((m) => (
           <div
             key={m.label}

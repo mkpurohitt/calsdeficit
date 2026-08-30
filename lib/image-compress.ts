@@ -119,3 +119,127 @@ export function makeVideoThumb(file: File): Promise<string | null> {
 
 /** Client-side guard: uploads above this will exceed the server request limit. */
 export const MAX_VIDEO_BYTES = 15 * 1024 * 1024;
+
+/**
+ * Re-encodes a video client-side before it's base64'd and sent to the model
+ * (the quick-log flow) — a phone-camera clip is easily 30-80 Mbps, and none
+ * of that resolution helps an AI recognise "this is a bench press."
+ *
+ * Draws every frame onto a downscaled canvas and records the canvas's own
+ * stream. Audio is dropped: workout clips essentially never carry information
+ * worth keeping in it, and skipping it removes an entire class of
+ * audio/video-sync bugs from a feature that only needs to look right, not
+ * play back losslessly.
+ *
+ * Never throws and never blocks the upload: unsupported browser, a decode
+ * error, a clip too long to bother with, or a result that isn't actually
+ * smaller all resolve with the ORIGINAL file. A compression bug must never be
+ * the reason a real log fails.
+ */
+export interface VideoCompressOptions {
+  /** Longest edge after downscaling. 480 is plenty for exercise recognition. */
+  maxEdge?: number;
+  fps?: number;
+  videoBitsPerSecond?: number;
+  /** Clips longer than this are left uncompressed rather than tying up the
+   *  main thread on a canvas draw loop for minutes. */
+  maxDurationSec?: number;
+}
+
+export async function compressVideo(file: File, options: VideoCompressOptions = {}): Promise<File> {
+  if (!file.type.startsWith("video/")) return file;
+  const { maxEdge = 480, fps = 24, videoBitsPerSecond = 800_000, maxDurationSec = 30 } = options;
+
+  if (typeof MediaRecorder === "undefined" || !("captureStream" in HTMLVideoElement.prototype)) {
+    return file;
+  }
+
+  const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find(
+    (t) => typeof MediaRecorder.isTypeSupported === "function" && MediaRecorder.isTypeSupported(t)
+  );
+  if (!mimeType) return file;
+
+  return new Promise<File>((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    let rafId = 0;
+    let settled = false;
+
+    const finish = (result: File) => {
+      if (settled) return;
+      settled = true;
+      cancelAnimationFrame(rafId);
+      URL.revokeObjectURL(url);
+      resolve(result);
+    };
+
+    video.onloadedmetadata = () => {
+      if (!video.videoWidth || !video.videoHeight || video.duration > maxDurationSec) {
+        finish(file);
+        return;
+      }
+
+      const scale = Math.min(1, maxEdge / Math.max(video.videoWidth, video.videoHeight));
+      // Even dimensions — some encoders reject odd ones.
+      const w = Math.max(2, Math.round((video.videoWidth * scale) / 2) * 2);
+      const h = Math.max(2, Math.round((video.videoHeight * scale) / 2) * 2);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        finish(file);
+        return;
+      }
+
+      const stream = canvas.captureStream(fps);
+      let recorder: MediaRecorder;
+      try {
+        recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond });
+      } catch {
+        finish(file);
+        return;
+      }
+
+      const chunks: BlobPart[] = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      recorder.onerror = () => finish(file);
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: mimeType });
+        // Only worth it if it actually shrank — an already-tiny or very
+        // simple source clip can come out larger after re-encoding.
+        if (blob.size > 0 && blob.size < file.size) {
+          finish(new File([blob], file.name.replace(/\.\w+$/, "") + ".webm", { type: mimeType }));
+        } else {
+          finish(file);
+        }
+      };
+
+      const draw = () => {
+        if (video.paused || video.ended) return;
+        ctx.drawImage(video, 0, 0, w, h);
+        rafId = requestAnimationFrame(draw);
+      };
+
+      video.onended = () => {
+        if (recorder.state === "recording") recorder.stop();
+      };
+      video.onerror = () => finish(file);
+
+      video.play().then(
+        () => {
+          recorder.start();
+          draw();
+        },
+        () => finish(file)
+      );
+    };
+    video.onerror = () => finish(file);
+    video.src = url;
+  });
+}
