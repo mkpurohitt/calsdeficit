@@ -9,8 +9,16 @@
 const MAX_EDGE = 768;
 const JPEG_QUALITY = 0.75;
 
+/**
+ * A photo already smaller than this is at or under what a 768px/75% JPEG
+ * re-encode produces, so decoding and re-encoding it would cost CPU and give
+ * nothing back — and could even make it larger.
+ */
+export const IMAGE_COMPRESS_MIN_BYTES = 120 * 1024;
+
 export async function compressImage(file: File): Promise<File> {
   if (!file.type.startsWith("image/")) return file;
+  if (file.size <= IMAGE_COMPRESS_MIN_BYTES) return file;
 
   try {
     const bitmap = await createImageBitmap(file);
@@ -30,6 +38,9 @@ export async function compressImage(file: File): Promise<File> {
       canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY)
     );
     if (!blob) return file;
+    // Re-encoding can enlarge an already-efficient source (a well-compressed
+    // PNG screenshot, say). Keep whichever is actually smaller.
+    if (blob.size >= file.size) return file;
 
     return new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" });
   } catch (error) {
@@ -146,8 +157,17 @@ export interface VideoCompressOptions {
   maxDurationSec?: number;
 }
 
+/**
+ * Below this a clip is already at or under what re-encoding would produce, so
+ * the only thing compression would buy is a wait. MediaRecorder runs in real
+ * time — a 20-second clip takes 20 seconds to re-encode — so skipping cheap
+ * cases matters as much for the user's time as for their data.
+ */
+export const VIDEO_COMPRESS_MIN_BYTES = 1.5 * 1024 * 1024;
+
 export async function compressVideo(file: File, options: VideoCompressOptions = {}): Promise<File> {
   if (!file.type.startsWith("video/")) return file;
+  if (file.size <= VIDEO_COMPRESS_MIN_BYTES) return file;
   const { maxEdge = 480, fps = 24, videoBitsPerSecond = 800_000, maxDurationSec = 30 } = options;
 
   if (typeof MediaRecorder === "undefined" || !("captureStream" in HTMLVideoElement.prototype)) {

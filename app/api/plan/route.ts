@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { genai, chatModelId } from '../../../lib/server/genai';
 import { requireUser } from '../../../lib/server/auth';
 import { templateWeeklyPlan, type GoalType } from '../../../lib/plan';
+import { reportError } from '../../../lib/server/api-errors';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -99,9 +100,10 @@ End with one final line starting "Aim for" summarizing the daily protein and wat
       source: weekly ? 'ai' : 'template',
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Plan generation failed.';
-    console.error('[Plan API] Fatal error:', error);
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    // Never echo a provider error to the client — it leaks project ids and
+    // reads as gibberish. reportError logs the real one server-side.
+    const failure = reportError('Plan API', error);
+    return NextResponse.json({ success: false, error: failure.message }, { status: failure.status });
   }
 }
 

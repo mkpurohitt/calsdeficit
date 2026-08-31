@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { countExercises, expandMuscleFilter, findExercises } from '../../../lib/server/exercise-db';
+import { reportError } from '../../../lib/server/api-errors';
 
 export const runtime = 'nodejs';
 
@@ -44,8 +45,9 @@ export async function GET(req: Request) {
     });
     return NextResponse.json({ success: true, data });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Exercise lookup failed.';
-    console.error('[Exercises API] Fatal error:', error);
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    // Never echo a provider error to the client — it leaks project ids and
+    // reads as gibberish. reportError logs the real one server-side.
+    const failure = reportError('Exercises API', error);
+    return NextResponse.json({ success: false, error: failure.message }, { status: failure.status });
   }
 }

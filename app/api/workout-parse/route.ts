@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "../../../lib/server/auth";
 import { consumeUsage, usageLimitMessage } from "../../../lib/server/usage";
 import { parseWorkout } from "../../../lib/server/workout-parse";
+import { reportError } from '../../../lib/server/api-errors';
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -34,8 +35,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, workout, usage: { used_pct: usage.used_pct, resets_at: usage.resets_at } });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Workout parsing failed.";
-    console.error("[Workout Parse API] Fatal error:", error);
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    // Never echo a provider error to the client — it leaks project ids and
+    // reads as gibberish. reportError logs the real one server-side.
+    const failure = reportError('Workout Parse API', error);
+    return NextResponse.json({ success: false, error: failure.message }, { status: failure.status });
   }
 }

@@ -9,6 +9,7 @@ import { requireUser } from '../../../lib/server/auth';
 import { getUserContext, describeUserContext, healthSafetyRider } from '../../../lib/server/user-profile';
 import { consumeUsage, usageLimitMessage, type UsageKind } from '../../../lib/server/usage';
 import { tierConfig } from '../../../lib/entitlements';
+import { reportError } from '../../../lib/server/api-errors';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -215,9 +216,10 @@ export async function POST(req: Request) {
       adKeywords: adsEnabled ? deriveChatAdKeywords(true, []) : [], adsEnabled, usage: usagePayload,
     });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Chat failed.';
-    console.error('Gemini AI Error:', error);
-    return NextResponse.json({ success: false, error: msg }, { status: 500 });
+    // Never echo a provider error to the client — it leaks project ids and
+    // reads as gibberish. reportError logs the real one server-side.
+    const failure = reportError('Chat API', error);
+    return NextResponse.json({ success: false, error: failure.message }, { status: failure.status });
   }
 }
 

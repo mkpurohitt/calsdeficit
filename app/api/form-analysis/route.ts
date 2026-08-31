@@ -7,6 +7,7 @@ import { requireUser } from "../../../lib/server/auth";
 import { consumeUsage, usageLimitMessage } from "../../../lib/server/usage";
 import { tierConfig } from "../../../lib/entitlements";
 import { adminDb } from "../../../lib/server/firebase-admin";
+import { reportError } from '../../../lib/server/api-errors';
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -134,8 +135,9 @@ Identify the exercise, score the form 0-100 against ideal biomechanics (depth, r
       usage: { used_pct: usage.used_pct, resets_at: usage.resets_at, tier: usage.tier },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Form analysis failed.";
-    console.error("[Form Analysis API] Fatal error:", error);
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    // Never echo a provider error to the client — it leaks project ids and
+    // reads as gibberish. reportError logs the real one server-side.
+    const failure = reportError('Form Analysis API', error);
+    return NextResponse.json({ success: false, error: failure.message }, { status: failure.status });
   }
 }
