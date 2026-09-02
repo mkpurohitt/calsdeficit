@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { Type, type Schema } from '@google/genai';
-import { genai, chatModelId, visionModelId } from '../../../lib/server/genai';
+import { genai, generateContentFast, chatModelId, visionModelId } from '../../../lib/server/genai';
 import { findExercises } from '../../../lib/server/exercise-db';
 import { analyzeFoodImage, analyzeFoodText } from '../../../lib/food-analysis';
 import { findFoodImage } from '../../../lib/server/food-image';
@@ -81,7 +81,10 @@ async function classify(
     const context = priorTurns.length
       ? `Conversation so far:\n${historyText(priorTurns.slice(-6))}\n\n`
       : '';
-    const res = await genai().models.generateContent({
+    // Routing a message into one of five buckets is pattern-matching, not
+    // reasoning — and it sits in front of every text message, so its latency
+    // is added to every answer.
+    const res = await generateContentFast({
       model: visionModelId(),
       contents: [{
         role: 'user',
@@ -258,7 +261,11 @@ HOW TO ANSWER
     ...priorTurns.map((t) => ({ role: t.role === 'ai' ? ('model' as const) : ('user' as const), parts: [{ text: t.text }] })),
     { role: 'user' as const, parts: [{ text: message }] },
   ];
-  const result = await genai().models.generateContent({ model: chatModelId(), contents });
+  // The prompt already carries the user's profile, the safety rider and any
+  // matched exercises, and the house style is "lead with the answer". There is
+  // nothing here for a reasoning chain to work out — it only delays the first
+  // token. This one call was the bulk of August's thinking spend.
+  const result = await generateContentFast({ model: chatModelId(), contents });
   return result.text ?? '';
 }
 

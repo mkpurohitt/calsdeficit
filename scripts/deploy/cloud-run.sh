@@ -104,15 +104,44 @@ SUBS="$SUBS|_ADSENSE_SLOT=${NEXT_PUBLIC_ADSENSE_SLOT_NATIVE:-}"
 SUBS="$SUBS|_AMAZON_TAG=${NEXT_PUBLIC_AMAZON_AFFILIATE_TAG:-}"
 gcloud builds submit --config cloudbuild.yaml --substitutions="^|^$SUBS" .
 
-# Create the secret if missing, then add the current value as a new version.
+# Secret Manager bills per ACTIVE VERSION per month, not per secret. This used
+# to add a version on every deploy and never remove one, so five secrets times
+# every deploy ever left 33 live versions — ₹157/month for values that were
+# almost always byte-identical to the deploy before.
+#
+# Only destroying a version stops the billing; disabling one still costs. The
+# service mounts ":latest" (see --set-secrets below), so older versions are
+# never read by anything — they only accrue storage.
+SECRET_VERSIONS_TO_KEEP="${SECRET_VERSIONS_TO_KEEP:-2}"
+
+# Destroys all but the newest N enabled versions. Keeping more than one leaves
+# room to roll a rotation back; every value here is also reproducible from the
+# deployer's own environment, so this loses nothing that can't be re-created.
+prune_secret_versions() {
+  local name="$1" v
+  for v in $(gcloud secrets versions list "$name" --filter="state:ENABLED" \
+               --format="value(name)" --sort-by="~createTime" \
+               | tail -n "+$((SECRET_VERSIONS_TO_KEEP + 1))"); do
+    if gcloud secrets versions destroy "$v" --secret="$name" --quiet >/dev/null 2>&1; then
+      echo "    pruned $name version $v"
+    fi
+  done
+}
+
+# Create the secret if missing, add a version only when the value actually
+# changed, then prune. Re-adding an identical value is what caused the leak.
 put_secret() {
   local name="$1" value="$2"
   [[ -z "$value" ]] && return 0
   if ! gcloud secrets describe "$name" >/dev/null 2>&1; then
     gcloud secrets create "$name" --replication-policy=automatic >/dev/null
+  elif [[ "$(gcloud secrets versions access latest --secret="$name" 2>/dev/null)" == "$value" ]]; then
+    echo "    secret $name unchanged"
+    return 0
   fi
   printf '%s' "$value" | gcloud secrets versions add "$name" --data-file=- >/dev/null
   echo "    secret $name updated"
+  prune_secret_versions "$name"
 }
 
 echo "==> Writing server-side secrets to Secret Manager…"

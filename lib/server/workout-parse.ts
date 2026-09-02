@@ -1,7 +1,7 @@
 import "server-only";
 import { Type, type Schema } from "@google/genai";
 import { z } from "zod";
-import { genai, visionModelId } from "./genai";
+import { generateContentFast, visionModelId } from "./genai";
 
 /** Structured workout parsed from a text prompt and/or a short video. */
 export const workoutParseZod = z.object({
@@ -49,7 +49,9 @@ export async function parseWorkout({
     parts.push({ inlineData: { data: base64Data, mimeType } });
   }
 
-  const response = await genai().models.generateContent({
+  // Pulling "bench press 4x8 60kg" apart is extraction against a fixed schema:
+  // the shape of the answer is already decided, so thinking adds only delay.
+  const response = await generateContentFast({
     model: visionModelId(),
     contents: [{ role: "user", parts }],
     config: {
